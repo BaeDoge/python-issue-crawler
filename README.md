@@ -63,10 +63,9 @@ uv sync
 cp .env.example .env
 ```
 
-`.env`에서 최소 이 두 개는 채워야 합니다.
+`.env`에서 최소 다음 항목을 채워야 합니다.
 - `OMNIROUTE_API_KEY`
-- `BLOG_REPO_PATH` — `nextjs-tech-blog` 레포를 로컬에 `git clone`해둔 경로
-- `PORTFOLIO_REPO_PATH` — `nextjs-portpolio` 레포를 로컬에 `git clone`해둔 경로
+- `PUBLISH_TARGETS` — 발행 대상 저장소 목록(JSON 배열). 여러 저장소를 하나의 환경변수로 설정할 수 있습니다.
 
 **1회 실행 (원할 때마다)**
 ```bash
@@ -99,29 +98,47 @@ uv run pipeline/scheduler.py
   품질이 믿을 만하다 싶으면 `true`로 바꾸시는 걸 권장합니다.
 - `false`로 두면 로컬 커밋까지는 되고, push만 직접 `git push`로 하시면 됩니다.
 
-## 두 사이트에 자동 발행
+## 여러 저장소에 자동 발행
 
-생성기를 실행하는 PC에 두 대상 레포를 각각 clone하고, `.env`에서 경로를 지정합니다.
+발행 대상은 `.env`의 `PUBLISH_TARGETS` JSON 배열 하나로 관리합니다. 대상별로 저장소 경로, MDX 저장 위치, 카테고리 폴더 사용 여부, 이미지 경로, 브랜치를 지정할 수 있습니다. 새 대상을 추가할 때 Python 코드를 수정할 필요 없이 배열 항목만 추가하면 됩니다.
 
 ```dotenv
-BLOG_REPO_PATH=C:\\Users\\seungho\\projects\\nextjs-tech-blog
-BLOG_CONTENT_DIR=content
-BLOG_GIT_BRANCH=main
-
-PORTFOLIO_REPO_PATH=C:\\Users\\seungho\\projects\\nextjs-portpolio
-POSTS_SUBDIR=src/app/[locale]/blog/posts
-PORTFOLIO_GIT_BRANCH=main
-
+PUBLISH_TARGETS='[
+  {
+    "name": "target-one",
+    "repo_path": "C:/path/to/repository-one",
+    "posts_dir": "content",
+    "category_subdirs": true,
+    "images_dir": "public/blogs",
+    "image_url_prefix": "/blogs",
+    "branch": "main"
+  },
+  {
+    "name": "target-two",
+    "repo_path": "C:/path/to/repository-two",
+    "posts_dir": "src/app/blog/posts",
+    "category_subdirs": false,
+    "images_dir": "public/blogs",
+    "image_url_prefix": "/blogs",
+    "branch": "main"
+  }
+]'
 AUTO_PUSH=true
 ```
 
-- 알고리즘 글은 독립 블로그의 `content/algorithm/`에, 트러블슈팅 글은 `content/troubleshooting/`에 발행합니다.
-- 포트폴리오 글은 기존처럼 `src/app/[locale]/blog/posts/`에 발행합니다.
-- 본문 이미지도 두 사이트 각각의 `public/blogs/`로 복사합니다.
-- 두 대상은 독립적으로 발행합니다. 한쪽 푸시가 실패해도 다른 쪽 발행은 시도하며, 결과에 사이트별 성공/실패를 표시합니다.
-- 두 사이트 모두 Vercel에 해당 GitHub 저장소가 연결되어 있어야 합니다. `AUTO_PUSH=true`면 GitHub push가 Vercel 배포를 시작합니다.
-- 발행 전 대상 레포에 미커밋 변경사항이 있으면 안전을 위해 그 대상의 발행을 중단합니다. 작업 트리를 정리한 뒤 다시 실행하세요.
-- 자동 발행은 로컬에서 생성기를 실행하는 PC가 켜져 있고 스케줄러가 동작 중일 때 실행됩니다. PC가 꺼져도 생성되게 하려면 별도 클라우드 실행기/Actions 구성이 필요합니다.
+- `name`: 로그에 표시할 대상 이름(중복 불가)
+- `repo_path`: 로컬에 clone한 Git 저장소의 절대 경로
+- `posts_dir`: MDX를 저장할 저장소 내부 상대 경로
+- `category_subdirs`: `true`면 `posts_dir/algorithm/` 또는 `posts_dir/troubleshooting/`에 저장
+- `images_dir`: 이미지 파일을 저장할 저장소 내부 상대 경로
+- `image_url_prefix`: MDX 본문에서 이미지를 참조하는 URL 경로. 기본값은 `/blogs`
+- `branch`: 대상 저장소에 푸시할 브랜치
+
+각 대상은 독립적으로 처리됩니다. 한쪽 저장소의 발행이 실패해도 다른 대상에 대한 발행은 계속 시도합니다. 대상 저장소에 미커밋 변경사항이 있으면 해당 대상의 발행만 중단합니다.
+
+연결된 배포 플랫폼이 Git push를 감지하도록 설정되어 있어야 자동 배포됩니다. Vercel을 사용하는 프로젝트라면 각 저장소가 해당 Vercel 프로젝트에 연결되어 있어야 합니다. `AUTO_PUSH=true`는 GitHub 인증이 이미 구성된 환경에서 push까지 수행합니다.
+
+새 대상은 예시의 두 객체 중 하나를 복사한 뒤 `name`, `repo_path`, `posts_dir` 등 해당 프로젝트에 맞는 값만 수정해 추가하면 됩니다. 예시 경로는 설명용이므로 실제 경로로 교체해야 합니다.
 
 ## 트러블슈팅 — 파이썬/라이브러리의 흔한 에러
 

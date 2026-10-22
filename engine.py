@@ -29,15 +29,15 @@ import json
 import sys
 from pathlib import Path
 
-from config import HOLD_THIRD_PARTY, BLOG_REPO_PATH, PORTFOLIO_REPO_PATH
+from config import HOLD_THIRD_PARTY, PUBLISH_TARGETS
 from topics import TOPICS, topic_choices
 from publish.git_publish import publish_note
 
 
 def _parse_args():
-    parser = argparse.ArgumentParser(description="트러블슈팅/알고리즘 노트를 생성하고 포트폴리오에 발행합니다")
+    parser = argparse.ArgumentParser(description="트러블슈팅/알고리즘 노트를 생성하고 설정된 저장소에 발행합니다")
     parser.add_argument("--topic", choices=[*TOPICS.keys(), "both"], help="생성할 주제 (생략하면 메뉴가 뜸)")
-    parser.add_argument("--no-publish", action="store_true", help="생성만 하고 포트폴리오 레포엔 올리지 않음")
+    parser.add_argument("--no-publish", action="store_true", help="생성만 하고 발행 대상 저장소에는 올리지 않음")
     parser.add_argument("--diagnose", action="store_true",
                         help="소스별 접속 상태를 점검하고 실패 원인을 출력 (후보가 안 나올 때 먼저 실행)")
     parser.add_argument("--publish-draft", metavar="MDX_PATH",
@@ -125,9 +125,8 @@ def main():
             sys.exit(1)
         topic_key = _resolve_via_inquirer()
 
-    if not args.no_publish and BLOG_REPO_PATH is None and PORTFOLIO_REPO_PATH is None:
-        print("ℹ️ .env에 BLOG_REPO_PATH와 PORTFOLIO_REPO_PATH가 모두 없어 발행은 건너뜁니다 "
-              "(파일은 output_files/ 에 저장됨).")
+    if not args.no_publish and not PUBLISH_TARGETS:
+        print("ℹ️ .env에 PUBLISH_TARGETS가 없어 발행은 건너뜁니다 (파일은 output_files/ 에 저장됨).")
 
     keys = list(TOPICS.keys()) if topic_key == "both" else [topic_key]
     for key in keys:
