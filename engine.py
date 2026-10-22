@@ -29,7 +29,7 @@ import json
 import sys
 from pathlib import Path
 
-from config import HOLD_THIRD_PARTY, PORTFOLIO_REPO_PATH
+from config import HOLD_THIRD_PARTY, BLOG_REPO_PATH, PORTFOLIO_REPO_PATH
 from topics import TOPICS, topic_choices
 from publish.git_publish import publish_note
 
@@ -125,8 +125,8 @@ def main():
             sys.exit(1)
         topic_key = _resolve_via_inquirer()
 
-    if not args.no_publish and PORTFOLIO_REPO_PATH is None:
-        print("ℹ️ .env에 PORTFOLIO_REPO_PATH가 없어서 이번 실행은 발행 단계 없이 mdx 생성까지만 됩니다 "
+    if not args.no_publish and BLOG_REPO_PATH is None and PORTFOLIO_REPO_PATH is None:
+        print("ℹ️ .env에 BLOG_REPO_PATH와 PORTFOLIO_REPO_PATH가 모두 없어 발행은 건너뜁니다 "
               "(파일은 output_files/ 에 저장됨).")
 
     keys = list(TOPICS.keys()) if topic_key == "both" else [topic_key]
