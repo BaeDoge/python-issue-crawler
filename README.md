@@ -65,7 +65,8 @@ cp .env.example .env
 
 `.env`에서 최소 이 두 개는 채워야 합니다.
 - `OMNIROUTE_API_KEY`
-- `PORTFOLIO_REPO_PATH` — 포트폴리오 레포를 로컬에 `git clone`해둔 경로
+- `BLOG_REPO_PATH` — `nextjs-tech-blog` 레포를 로컬에 `git clone`해둔 경로
+- `PORTFOLIO_REPO_PATH` — `nextjs-portpolio` 레포를 로컬에 `git clone`해둔 경로
 
 **1회 실행 (원할 때마다)**
 ```bash
@@ -97,6 +98,30 @@ uv run pipeline/scheduler.py
 - 처음에는 `AUTO_PUSH=false`로 두고 며칠간 결과물을 직접 확인하신 뒤,
   품질이 믿을 만하다 싶으면 `true`로 바꾸시는 걸 권장합니다.
 - `false`로 두면 로컬 커밋까지는 되고, push만 직접 `git push`로 하시면 됩니다.
+
+## 두 사이트에 자동 발행
+
+생성기를 실행하는 PC에 두 대상 레포를 각각 clone하고, `.env`에서 경로를 지정합니다.
+
+```dotenv
+BLOG_REPO_PATH=C:\\Users\\seungho\\projects\\nextjs-tech-blog
+BLOG_CONTENT_DIR=content
+BLOG_GIT_BRANCH=main
+
+PORTFOLIO_REPO_PATH=C:\\Users\\seungho\\projects\\nextjs-portpolio
+POSTS_SUBDIR=src/app/[locale]/blog/posts
+PORTFOLIO_GIT_BRANCH=main
+
+AUTO_PUSH=true
+```
+
+- 알고리즘 글은 독립 블로그의 `content/algorithm/`에, 트러블슈팅 글은 `content/troubleshooting/`에 발행합니다.
+- 포트폴리오 글은 기존처럼 `src/app/[locale]/blog/posts/`에 발행합니다.
+- 본문 이미지도 두 사이트 각각의 `public/blogs/`로 복사합니다.
+- 두 대상은 독립적으로 발행합니다. 한쪽 푸시가 실패해도 다른 쪽 발행은 시도하며, 결과에 사이트별 성공/실패를 표시합니다.
+- 두 사이트 모두 Vercel에 해당 GitHub 저장소가 연결되어 있어야 합니다. `AUTO_PUSH=true`면 GitHub push가 Vercel 배포를 시작합니다.
+- 발행 전 대상 레포에 미커밋 변경사항이 있으면 안전을 위해 그 대상의 발행을 중단합니다. 작업 트리를 정리한 뒤 다시 실행하세요.
+- 자동 발행은 로컬에서 생성기를 실행하는 PC가 켜져 있고 스케줄러가 동작 중일 때 실행됩니다. PC가 꺼져도 생성되게 하려면 별도 클라우드 실행기/Actions 구성이 필요합니다.
 
 ## 트러블슈팅 — 파이썬/라이브러리의 흔한 에러
 

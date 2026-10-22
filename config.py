@@ -79,28 +79,35 @@ LOG_DIR = PROJECT_ROOT / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 # -----------------------------------------------------------------------
-# 배포 대상 — 포트폴리오 레포 (Vercel에 연결된 GitHub 레포의 로컬 clone)
+# 배포 대상 — 기술 블로그 + 포트폴리오 (각각 로컬 git clone)
 # -----------------------------------------------------------------------
+_blog_path = os.getenv("BLOG_REPO_PATH", "").strip()
+BLOG_REPO_PATH = Path(_blog_path) if _blog_path else None
+
 _portfolio_path = os.getenv("PORTFOLIO_REPO_PATH", "").strip()
 PORTFOLIO_REPO_PATH = Path(_portfolio_path) if _portfolio_path else None
 
-# 레포 안에서 mdx 포스트가 저장되는 상대 경로 (Next.js 프로젝트 구조 기준)
-POSTS_SUBDIR = os.getenv("POSTS_SUBDIR", "src/app/[locale]/blog/posts")
+# 기술 블로그는 content/algorithm, content/troubleshooting 아래에 저장
+BLOG_CONTENT_DIR = os.getenv("BLOG_CONTENT_DIR", "content").strip()
+# 포트폴리오는 기존 구조대로 단일 폴더에 저장
+POSTS_SUBDIR = os.getenv("POSTS_SUBDIR", "src/app/[locale]/blog/posts").strip()
 
-# true면 commit 후 즉시 push까지 수행 (Vercel이 자동 배포). false면 커밋만 하고 push는 안 함
+# true면 각 대상 레포에 commit 후 push. Vercel이 GitHub push를 감지해 배포합니다.
 AUTO_PUSH = os.getenv("AUTO_PUSH", "true").strip().lower() in ("1", "true", "yes")
 
-# true면 다른 사람의 이미지/블로그 글을 참고한 노트는 자동 발행하지 않고 초안으로만 남김
-# (원저작자 허가를 받은 뒤 engine.py --publish-draft로 발행). 허가 절차가 정리되면 false로.
+# 다른 사람의 자료/이미지에 의존한 노트는 허가 전 자동 발행하지 않음
 HOLD_THIRD_PARTY = os.getenv("HOLD_THIRD_PARTY", "true").strip().lower() in ("1", "true", "yes")
 
-# push 대상 브랜치. main으로 바로 올리거나, 검수용 브랜치를 쓰고 싶으면 바꿀 것
+# 공통 기본 브랜치와 대상별 오버라이드
 GIT_BRANCH = os.getenv("GIT_BRANCH", "main").strip()
+BLOG_GIT_BRANCH = os.getenv("BLOG_GIT_BRANCH", GIT_BRANCH).strip()
+PORTFOLIO_GIT_BRANCH = os.getenv("PORTFOLIO_GIT_BRANCH", GIT_BRANCH).strip()
 
 if __name__ == "__main__":
     print(f"OmniRoute base_url = {OMNIROUTE_BASE_URL}")
     print(f"writer   -> {llm_writer.model}")
     print(f"verifier -> {llm_verifier.model}")
     print(f"output   -> {OUTPUT_DIR}")
-    print(f"portfolio repo -> {PORTFOLIO_REPO_PATH} (posts in {POSTS_SUBDIR})")
-    print(f"auto push -> {AUTO_PUSH} (branch: {GIT_BRANCH})")
+    print(f"blog repo -> {BLOG_REPO_PATH} (content in {BLOG_CONTENT_DIR}, branch: {BLOG_GIT_BRANCH})")
+    print(f"portfolio repo -> {PORTFOLIO_REPO_PATH} (posts in {POSTS_SUBDIR}, branch: {PORTFOLIO_GIT_BRANCH})")
+    print(f"auto push -> {AUTO_PUSH}")
