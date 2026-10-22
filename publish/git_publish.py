@@ -81,11 +81,7 @@ def _publish_to_repo(
         note_content = note_path.read_text(encoding="utf-8")
         image_url_prefix = target["image_url_prefix"]
         if image_url_prefix != "/blogs":
-            note_content = re.sub(
-                r"(?<=\\()/?blogs/",
-                image_url_prefix + "/",
-                note_content,
-            )
+            note_content = note_content.replace("/blogs/", image_url_prefix + "/")
         dest_path.write_text(note_content, encoding="utf-8", newline="\n")
 
         images_dir = _safe_relative(target["images_dir"])
