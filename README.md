@@ -73,9 +73,15 @@ uv run pipeline/engine.py                        # 메뉴에서 선택
 uv run pipeline/engine.py --topic troubleshooting
 uv run pipeline/engine.py --topic algorithm
 uv run pipeline/engine.py --topic both            # 둘 다 한 편씩
+uv run pipeline/engine.py --topic algorithm --count 3  # 알고리즘 3편 생성
+uv run pipeline/engine.py --topic troubleshooting --count 5  # 트러블슈팅 5편 생성
+uv run pipeline/engine.py --topic both --count 2      # 각 주제 2편씩, 총 4편
+uv run pipeline/engine.py --topic both --count 3 --no-publish  # 총 6편, 발행 없이 생성
 uv run pipeline/engine.py --topic both --no-publish  # 생성만, 발행은 안 함
 uv run pipeline/engine.py --publish-draft output_files/troubleshooting/xxx.mdx  # 보류 초안 발행
 ```
+
+`--count N`은 선택한 주제별 생성 편수를 지정합니다. 기본값은 1입니다. `--topic both --count 3`이면 트러블슈팅 3편과 알고리즘 3편, 총 6편을 순차 생성합니다. 한 편의 소재 수집이나 검증이 실패해도 기본적으로 다음 편을 계속 시도합니다. `--stop-on-error`를 추가하면 첫 실패에서 중단합니다. 자동 발행 중 일부 대상의 push가 실패하면 요약에 실패가 표시되고 프로세스가 0이 아닌 종료 코드로 끝납니다.
 
 **매일 자동 실행 (PC를 켜두는 동안)**
 ```bash
