@@ -58,7 +58,6 @@ pipeline/
 ## 설치 및 실행
 
 ```bash
-cd pipeline
 uv sync
 cp .env.example .env
 ```
@@ -69,17 +68,23 @@ cp .env.example .env
 
 **1회 실행 (원할 때마다)**
 ```bash
-uv run pipeline/engine.py                        # 메뉴에서 선택
-uv run pipeline/engine.py --topic troubleshooting
-uv run pipeline/engine.py --topic algorithm
-uv run pipeline/engine.py --topic both            # 둘 다 한 편씩
-uv run pipeline/engine.py --topic both --no-publish  # 생성만, 발행은 안 함
-uv run pipeline/engine.py --publish-draft output_files/troubleshooting/xxx.mdx  # 보류 초안 발행
+uv run engine.py                        # 메뉴에서 선택
+uv run engine.py --topic troubleshooting
+uv run engine.py --topic algorithm
+uv run engine.py --topic both            # 둘 다 한 편씩
+uv run engine.py --topic algorithm --count 3  # 알고리즘 3편 생성
+uv run engine.py --topic troubleshooting --count 5  # 트러블슈팅 5편 생성
+uv run engine.py --topic both --count 2      # 각 주제 2편씩, 총 4편
+uv run engine.py --topic both --count 3 --no-publish  # 총 6편, 발행 없이 생성
+uv run engine.py --topic both --no-publish  # 생성만, 발행은 안 함
+uv run engine.py --publish-draft output_files/troubleshooting/xxx.mdx  # 보류 초안 발행
 ```
+
+`--count N`은 선택한 주제별 생성 편수를 지정합니다. 기본값은 1입니다. `--topic both --count 3`이면 트러블슈팅 3편과 알고리즘 3편, 총 6편을 순차 생성합니다. 한 편의 소재 수집이나 검증이 실패해도 기본적으로 다음 편을 계속 시도합니다. `--stop-on-error`를 추가하면 첫 실패에서 중단합니다. 자동 발행 중 일부 대상의 push가 실패하면 요약에 실패가 표시되고 프로세스가 0이 아닌 종료 코드로 끝납니다.
 
 **매일 자동 실행 (PC를 켜두는 동안)**
 ```bash
-uv run pipeline/scheduler.py
+uv run scheduler.py
 ```
 `.env`의 `SCHEDULE_TIME`(기본 09:00)에 트러블슈팅 1편 + 알고리즘 1편을 생성해서
 자동으로 발행합니다. 터미널을 계속 켜둬야 해서, 꺼지지 않게 하고 싶으면 OS의
@@ -93,7 +98,7 @@ uv run pipeline/scheduler.py
 안전장치이긴 하지만, 로컬 LLM 품질을 고려하면 100% 믿기는 어렵습니다.
 
 - 검증을 최종 통과하지 못한 글은 **자동으로 발행되지 않고** 로컬 파일로만
-  남습니다(`pipeline/output_files/`) — 직접 보시고 수동으로 옮기시면 됩니다.
+  남습니다(`output_files/`) — 직접 보시고 수동으로 옮기시면 됩니다.
 - 처음에는 `AUTO_PUSH=false`로 두고 며칠간 결과물을 직접 확인하신 뒤,
   품질이 믿을 만하다 싶으면 `true`로 바꾸시는 걸 권장합니다.
 - `false`로 두면 로컬 커밋까지는 되고, push만 직접 `git push`로 하시면 됩니다.
@@ -201,7 +206,7 @@ GitHub 이슈 중심에서 **"흔하고 해결이 분명한 에러" 중심**으�
   `AUTO_PUSH`와 무관하게 **자동 발행하지 않고** 초안으로만 남습니다. 허가를 받으신 뒤:
 
 ```bash
-uv run pipeline/engine.py --publish-draft output_files/troubleshooting/xxx.mdx
+uv run engine.py --publish-draft output_files/troubleshooting/xxx.mdx
 ```
 
   허가 절차가 정리돼서 자동 발행해도 괜찮으면 `.env`에서 `HOLD_THIRD_PARTY=false`로 바꾸세요.
@@ -220,7 +225,7 @@ uv run pipeline/engine.py --publish-draft output_files/troubleshooting/xxx.mdx
 ## 후보가 안 나오거나 생성이 실패할 때 — `--diagnose`
 
 ```bash
-uv run pipeline/engine.py --diagnose
+uv run engine.py --diagnose
 ```
 
 소스별(GitHub, StackOverflow, LeetCode, 블로그 검색/본문)로 실제 접속을 시험해서

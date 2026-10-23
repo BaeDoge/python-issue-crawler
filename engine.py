@@ -6,6 +6,8 @@
     uv run pipeline/engine.py --topic troubleshooting
     uv run pipeline/engine.py --topic algorithm
     uv run pipeline/engine.py --topic both           # 둘 다 한 편씩
+    uv run pipeline/engine.py --topic algorithm --count 3  # 알고리즘 3편 생성
+    uv run pipeline/engine.py --topic both --count 2      # 각 주제 2편씩, 총 4편
 
 후보가 안 나오거나 생성이 실패할 때(접속 문제 점검):
     uv run pipeline/engine.py --diagnose
@@ -37,6 +39,10 @@ from publish.git_publish import publish_note
 def _parse_args():
     parser = argparse.ArgumentParser(description="트러블슈팅/알고리즘 노트를 생성하고 설정된 저장소에 발행합니다")
     parser.add_argument("--topic", choices=[*TOPICS.keys(), "both"], help="생성할 주제 (생략하면 메뉴가 뜸)")
+    parser.add_argument("--count", type=int, default=1,
+                        help="주제별 생성 편수 (기본값: 1, --topic both이면 각 주제에 적용)")
+    parser.add_argument("--stop-on-error", action="store_true",
+                        help="한 편 생성에 실패하면 남은 반복을 중단")
     parser.add_argument("--no-publish", action="store_true", help="생성만 하고 발행 대상 저장소에는 올리지 않음")
     parser.add_argument("--diagnose", action="store_true",
                         help="소스별 접속 상태를 점검하고 실패 원인을 출력 (후보가 안 나올 때 먼저 실행)")
@@ -118,6 +124,9 @@ def main():
         publish_draft(args.publish_draft)
         return
 
+    if args.count < 1:
+        raise SystemExit("--count는 1 이상의 정수여야 합니다.")
+
     topic_key = args.topic
     if not topic_key:
         if not sys.stdin.isatty():
@@ -129,8 +138,59 @@ def main():
         print("ℹ️ .env에 PUBLISH_TARGETS가 없어 발행은 건너뜁니다 (파일은 output_files/ 에 저장됨).")
 
     keys = list(TOPICS.keys()) if topic_key == "both" else [topic_key]
+    summary = []
+    total_runs = len(keys) * args.count
+
+    print(f"\n생성 계획: {', '.join(keys)} / 주제별 {args.count}편 / 총 {total_runs}회")
     for key in keys:
-        run_one(key, publish=not args.no_publish)
+        for index in range(1, args.count + 1):
+            print(f"\n[{key}] {index}/{args.count}편 시작")
+            try:
+                result = run_one(key, publish=not args.no_publish)
+            except KeyboardInterrupt:
+                print("\n사용자 요청으로 중단했습니다.")
+                raise
+            except Exception as exc:
+                result = {"ok": False, "reason": f"{type(exc).__name__}: {exc}"}
+                print(f"[{key}] 예외로 실패: {result['reason']}")
+
+            generated = bool(result.get("ok"))
+            publish_result = result.get("publish") or {}
+            publish_ok = publish_result.get("ok", True)
+            held = bool(result.get("held_for_permission"))
+            success = generated and publish_ok and not held
+            summary.append({
+                "topic": key,
+                "index": index,
+                "ok": success,
+                "generated": generated,
+                "title": result.get("title", ""),
+                "path": str(result.get("path", "")),
+                "reason": result.get("reason", ""),
+                "publish_message": publish_result.get("message", ""),
+                "held": held,
+            })
+
+            if not success and args.stop_on_error:
+                print("--stop-on-error 옵션에 따라 남은 생성 작업을 중단합니다.")
+                break
+        if args.stop_on_error and summary and not summary[-1]["ok"]:
+            break
+
+    succeeded = sum(1 for item in summary if item["ok"])
+    generated_count = sum(1 for item in summary if item["generated"])
+    failed = len(summary) - succeeded
+    print("\n" + "=" * 60)
+    print(f"생성 작업 요약: {succeeded}/{len(summary)} 성공, {failed} 실패")
+    print(f"MDX 생성: {generated_count}/{len(summary)}")
+    for item in summary:
+        status = "성공" if item["ok"] else ("초안 보류" if item["held"] else "실패")
+        detail = item["title"] or item["reason"] or item["publish_message"] or item["path"]
+        print(f"- [{item['topic']}] {item['index']}/{args.count}: {status} {detail}")
+    print("=" * 60)
+
+    if failed:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
