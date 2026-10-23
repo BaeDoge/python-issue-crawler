@@ -155,15 +155,20 @@ def main():
                 print(f"[{key}] 예외로 실패: {result['reason']}")
 
             generated = bool(result.get("ok"))
+            review_passed = bool(result.get("passed")) if generated else False
             publish_result = result.get("publish") or {}
-            publish_ok = publish_result.get("ok", True)
+            publish_attempted = "publish" in result
+            publish_ok = bool(publish_result.get("ok")) if publish_attempted else False
             held = bool(result.get("held_for_permission"))
-            success = generated and publish_ok and not held
+            success = generated and review_passed and not held and (args.no_publish or publish_ok)
             summary.append({
                 "topic": key,
                 "index": index,
                 "ok": success,
                 "generated": generated,
+                "review_passed": review_passed,
+                "publish_attempted": publish_attempted,
+                "publish_ok": publish_ok,
                 "title": result.get("title", ""),
                 "path": str(result.get("path", "")),
                 "reason": result.get("reason", ""),
@@ -179,19 +184,37 @@ def main():
 
     succeeded = sum(1 for item in summary if item["ok"])
     generated_count = sum(1 for item in summary if item["generated"])
+    review_passed_count = sum(1 for item in summary if item["review_passed"])
+    publish_success_count = sum(1 for item in summary if item["publish_attempted"] and item["publish_ok"])
+    held_count = sum(1 for item in summary if item["held"])
     failed = len(summary) - succeeded
     print("\n" + "=" * 60)
-    print(f"생성 작업 요약: {succeeded}/{len(summary)} 성공, {failed} 실패")
+    print(f"작업 성공(검수 통과 및 요청된 발행 단계 완료): {succeeded}/{len(summary)}")
     print(f"MDX 생성: {generated_count}/{len(summary)}")
+    print(f"검수 통과: {review_passed_count}/{generated_count if generated_count else 0}")
+    if not args.no_publish:
+        print(f"발행 단계 성공: {publish_success_count}회")
+    print(f"검수/발행 보류: {held_count}회")
+    print(f"실패 또는 미통과: {failed}회")
     for item in summary:
-        status = "성공" if item["ok"] else ("초안 보류" if item["held"] else "실패")
+        if item["held"]:
+            status = "초안 보류(제3자 자료 확인 필요)"
+        elif not item["generated"]:
+            status = "생성 실패"
+        elif not item["review_passed"]:
+            status = "검수 미통과(파일 저장, 자동 발행 안 함)"
+        elif item["publish_attempted"] and not item["publish_ok"]:
+            status = "발행 실패"
+        elif args.no_publish:
+            status = "생성/검수 완료(발행 생략)"
+        else:
+            status = "성공"
         detail = item["title"] or item["reason"] or item["publish_message"] or item["path"]
         print(f"- [{item['topic']}] {item['index']}/{args.count}: {status} {detail}")
     print("=" * 60)
 
     if failed:
         raise SystemExit(1)
-
 
 if __name__ == "__main__":
     main()

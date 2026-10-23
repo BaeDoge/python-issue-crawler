@@ -66,6 +66,8 @@ VERIFIER_MODEL = _role_model("OMNIROUTE_MODEL_VERIFIER", "auto/quality")
 llm_scout = _omni_llm(SCOUT_MODEL, temperature=0.4, max_tokens=1536)
 # 추론 모델은 <think> 토큰도 max_tokens에 포함돼서, 값이 작으면 글이 중간에 끊깁니다.
 WRITER_MAX_TOKENS = int(os.getenv("OMNIROUTE_WRITER_MAX_TOKENS", "6000"))
+# 검수 사이클 횟수. 각 사이클은 TopicSpec.max_rounds(기본 5라운드)까지 재작성합니다.
+QUALITY_ATTEMPTS = max(1, int(os.getenv("QUALITY_ATTEMPTS", "3")))
 llm_writer = _omni_llm(WRITER_MODEL, temperature=0.4, max_tokens=WRITER_MAX_TOKENS)
 llm_verifier = _omni_llm(VERIFIER_MODEL, temperature=0.1, max_tokens=2048)
 
