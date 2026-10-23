@@ -148,7 +148,7 @@ def main():
             try:
                 result = run_one(key, publish=not args.no_publish)
             except KeyboardInterrupt:
-                print("\\n사용자 요청으로 중단했습니다.")
+                print("\n사용자 요청으로 중단했습니다.")
                 raise
             except Exception as exc:
                 result = {"ok": False, "reason": f"{type(exc).__name__}: {exc}"}
@@ -157,7 +157,8 @@ def main():
             generated = bool(result.get("ok"))
             publish_result = result.get("publish") or {}
             publish_ok = publish_result.get("ok", True)
-            success = generated and publish_ok
+            held = bool(result.get("held_for_permission"))
+            success = generated and publish_ok and not held
             summary.append({
                 "topic": key,
                 "index": index,
@@ -167,7 +168,7 @@ def main():
                 "path": str(result.get("path", "")),
                 "reason": result.get("reason", ""),
                 "publish_message": publish_result.get("message", ""),
-                "held": bool(result.get("held_for_permission")),
+                "held": held,
             })
 
             if not success and args.stop_on_error:
@@ -179,7 +180,7 @@ def main():
     succeeded = sum(1 for item in summary if item["ok"])
     generated_count = sum(1 for item in summary if item["generated"])
     failed = len(summary) - succeeded
-    print("\\n" + "=" * 60)
+    print("\n" + "=" * 60)
     print(f"생성 작업 요약: {succeeded}/{len(summary)} 성공, {failed} 실패")
     print(f"MDX 생성: {generated_count}/{len(summary)}")
     for item in summary:
