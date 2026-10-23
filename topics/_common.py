@@ -21,7 +21,7 @@ from typing import Callable
 from crewai import Task, Crew, Process
 
 import history
-from config import OUTPUT_DIR, LOG_DIR
+from config import OUTPUT_DIR, LOG_DIR, QUALITY_ATTEMPTS
 from crew_builder import build_scout_agent, build_writer_agent, build_reviewer_agent
 from verify.quality import refine_loop, detect_foreign_language_mixing
 from topics.note_format import parse_note_text
@@ -156,6 +156,90 @@ def _pick_candidate_with_context(spec: TopicSpec, candidates: list, chosen: dict
     return None, None
 
 
+def _quality_issues(result: dict) -> list[str]:
+    """검수 이력에서 지적 사항을 중복 없이 추출한다."""
+    found = []
+    for item in result.get("history", []):
+        found.extend(item.get("issues", []) or [])
+        verdict = item.get("verdict") or {}
+        found.extend(verdict.get("issues", []) or [])
+    unique = []
+    for issue in found:
+        text = str(issue).strip()
+        if text and text not in unique:
+            unique.append(text)
+    return unique[-12:]
+
+
+def _quality_score(result: dict) -> int:
+    """통과 결과가 최우선이며, 미통과 결과끼리는 마지막 라운드의 지적 수가 적은 것을 선택한다."""
+    if result.get("passed"):
+        return -1
+    history_items = result.get("history") or []
+    if not history_items:
+        return 10_000
+    last = history_items[-1]
+    issues = last.get("issues")
+    if issues is None:
+        issues = (last.get("verdict") or {}).get("issues", [])
+    return len(issues or [])
+
+
+def _refine_with_retries(*, writer_agent, critic_agent, initial_prompt: str,
+                         critique_instructions: str, expected_output: str,
+                         deterministic_check_fn, max_rounds: int, log_prefix: str) -> dict:
+    """검수 사이클을 반복하고, 통과 결과가 없으면 가장 나은 초안을 보존한다."""
+    attempts = max(1, QUALITY_ATTEMPTS)
+    best_result = None
+    best_score = 10_000
+    best_attempt = 1
+    all_history = []
+    total_rounds = 0
+    retry_prompt = initial_prompt
+
+    for attempt in range(1, attempts + 1):
+        print(f"{log_prefix}품질 검수 시도 {attempt}/{attempts} (시도당 최대 {max_rounds}라운드)")
+        current = refine_loop(
+            writer_agent=writer_agent, critic_agent=critic_agent,
+            initial_prompt=retry_prompt,
+            critique_instructions=critique_instructions,
+            expected_output=expected_output,
+            deterministic_check_fn=deterministic_check_fn,
+            max_rounds=max_rounds,
+            log_prefix=f"{log_prefix}[시도 {attempt}/{attempts}] ",
+        )
+        total_rounds += int(current.get("rounds", 0))
+        all_history.extend({"attempt": attempt, **entry} for entry in current.get("history", []))
+
+        score = _quality_score(current)
+        if best_result is None or score <= best_score:
+            best_result = current
+            best_score = score
+            best_attempt = attempt
+
+        if current.get("passed"):
+            return {**current, "rounds": total_rounds, "attempts": attempt,
+                    "best_attempt": attempt, "history": all_history}
+
+        issues = _quality_issues(current)
+        if attempt < attempts:
+            feedback = "\n".join(f"- {issue}" for issue in issues)
+            if not feedback:
+                feedback = "- 이전 초안이 품질 기준을 통과하지 못한 원인을 다시 점검할 것"
+            retry_prompt = (
+                f"{initial_prompt}\n\n"
+                f"--- 이전 품질 검수 시도 {attempt}가 최대 {max_rounds}라운드 후에도 미통과 ---\n"
+                "같은 소재를 유지하되 이전 초안을 그대로 반복하지 말고, 아래 지적 사항을 우선 해결해 "
+                "처음부터 완성도 높은 새 초안을 작성할 것. 사실을 새로 지어내지 말고 참고 자료를 근거로 할 것.\n"
+                f"{feedback}"
+            )
+            print(f"{log_prefix}시도 {attempt} 미통과. 같은 소재로 새 검수 사이클을 시작합니다.")
+
+    assert best_result is not None
+    print(f"{log_prefix}품질 검수 {attempts}회 시도, 총 {total_rounds}라운드 후에도 미통과. {best_attempt}번째 시도의 결과물을 보존합니다.")
+    return {**best_result, "passed": False, "rounds": total_rounds,
+            "attempts": attempts, "best_attempt": best_attempt, "history": all_history}
+
 def run_topic(spec: TopicSpec) -> dict:
     candidates = [c for c in spec.gather_candidates() if not history.is_used(spec.key, c.get("link"))]
     if not candidates:
@@ -199,7 +283,7 @@ def run_topic(spec: TopicSpec) -> dict:
     prompt = _writer_prompt(spec, chosen["title"], context_text)
     expected = "'제목:'/'요약:' 줄 + '## 섹션명' 헤더로 구성된 마크다운 노트"
 
-    result = refine_loop(
+    result = _refine_with_retries(
         writer_agent=writer,
         critic_agent=reviewer,
         initial_prompt=prompt,
@@ -225,6 +309,8 @@ def run_topic(spec: TopicSpec) -> dict:
     refine_meta = {
         "review_passed": result["passed"],
         "refine_rounds": result["rounds"],
+        "quality_attempts": result.get("attempts", 1),
+        "best_quality_attempt": result.get("best_attempt", 1),
         "chosen_candidate": chosen["title"],
         "chosen_link": chosen.get("link"),
     }
@@ -244,7 +330,14 @@ def run_topic(spec: TopicSpec) -> dict:
     history.mark_used(spec.key, chosen.get("link"), chosen["title"])
 
     print(f"\n저장됨: {rendered['path']}")
-    print(f"검토 결과: {result['rounds']}라운드 만에 "
+    if result.get("attempts", 1) > 1:
+        review_summary = (
+            f"{result['attempts']}회 시도, 총 {result['rounds']}라운드, "
+            f"최선의 결과는 {result.get('best_attempt', result['attempts'])}번째 시도"
+        )
+    else:
+        review_summary = f"{result['rounds']}라운드"
+    print(f"검토 결과: {review_summary} — "
           f"{'통과' if result['passed'] else '최종 미통과(최선의 결과물로 저장됨 — 수동 검수 권장)'}")
     if rendered["image_files"]:
         print(f"이미지 {len(rendered['image_files'])}장 포함 (mdx 옆 public/blogs/ 에 같이 저장됨).")
