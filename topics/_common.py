@@ -157,19 +157,15 @@ def _pick_candidate_with_context(spec: TopicSpec, candidates: list, chosen: dict
 
 
 def _quality_issues(result: dict) -> list[str]:
-    """검수 이력에서 지적 사항을 중복 없이 추출한다."""
-    found = []
-    for item in result.get("history", []):
-        found.extend(item.get("issues", []) or [])
-        verdict = item.get("verdict") or {}
-        found.extend(verdict.get("issues", []) or [])
-    unique = []
-    for issue in found:
-        text = str(issue).strip()
-        if text and text not in unique:
-            unique.append(text)
-    return unique[-12:]
-
+    """마지막 검수 라운드의 지적 사항만 추출한다."""
+    items = result.get("history", []) or []
+    if not items:
+        return []
+    item = items[-1]
+    issues = item.get("issues")
+    if issues is None:
+        issues = (item.get("verdict") or {}).get("issues", [])
+    return [str(issue).strip() for issue in (issues or []) if str(issue).strip()]
 
 def _quality_score(result: dict) -> int:
     """통과 결과가 최우선이며, 미통과 결과끼리는 마지막 라운드의 지적 수가 적은 것을 선택한다."""
