@@ -110,119 +110,56 @@ def discover_github_candidates(limit: int | None = None) -> dict:
     errors: list[str] = []
     since = (datetime.now(timezone.utc) - timedelta(days=30)).date().isoformat()
 
+    # GitHub unauthenticated Search API는 검색 요청 제한이 낮으므로
+    # 분야별 인기 검색 9회 + 전체 최근 활동 검색 1회로 10회 이내에 제한합니다.
     for group, base_query in SEARCH_GROUPS:
-        for kind, query in (
-            ("popular", f"{base_query} archived:false"),
-            ("trending", f"{base_query} pushed:>{since} archived:false"),
-        ):
-            print(f"[GitHub] {group} / {'인기' if kind == 'popular' else '최근 활동'} 검색 중...")
-            try:
-                payload = _request(
-                    f"{API_ROOT}/search/repositories",
-                    {"q": query, "per_page": min(100, per_query),
-                     "sort": "stars" if kind == "popular" else "updated", "order": "desc"},
-                )
-                target = popular if kind == "popular" else trending
-                for item in payload.get("items", []):
-                    full_name = item.get("full_name")
-                    if not full_name or not item.get("html_url"):
-                        continue
-                    candidate = _candidate(item, group, kind)
-                    if full_name not in target or candidate["score"] > target[full_name]["score"]:
-                        target[full_name] = candidate
-            except RequestException as exc:
-                message = f"{group}/{kind}: {type(exc).__name__}: {exc}"
-                errors.append(message)
-                print(f"[경고] GitHub 검색 실패: {message}")
-            except (ValueError, KeyError) as exc:
-                errors.append(f"{group}/{kind}: {exc}")
-                print(f"[경고] 응답 처리 실패: {group}: {exc}")
-            time.sleep(0.15)
-
-    popular_items = sorted(popular.values(), key=lambda x: (x["stars"], x["score"]), reverse=True)
-    trending_items = sorted(
-        trending.values(),
-        key=lambda x: (x["pushed_days"] is not None and x["pushed_days"] <= 7, x["score"], x["stars"]),
-        reverse=True,
-    )
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    output_path = OUTPUT_DIR / f"github_opensource_candidates_{datetime.now():%Y%m%d_%H%M%S}.json"
-    payload = {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "methodology": (
-            "GitHub Search API 기반 휴리스틱 후보입니다. GitHub 전체 트렌딩 순위나 별점 증가량을 "
-            "직접 측정한 결과가 아니며, 점수는 품질·보안·유지보수·라이선스 적합성을 보증하지 않습니다."
-        ),
-        "popular": popular_items,
-        "trending": trending_items,
-        "errors": errors,
-    }
-    output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"\nJSON 저장: {output_path}")
-    print(f"인기 후보 {len(popular_items)}개 / 최근 활동 후보 {len(trending_items)}개")
-    if errors:
-        print(f"검색 오류 {len(errors)}건. 네트워크/인증서 정책 또는 GitHub API 제한을 확인하세요.")
-    return payload
-
-
-def print_candidates(payload: dict, display_limit: int = 15) -> None:
-    for key, heading in (("popular", "인기 프로젝트"), ("trending", "최근 활동 프로젝트")):
-        print("\n" + "=" * 76 + "\n" + heading + "\n" + "=" * 76)
-        items = payload.get(key, [])
-        if not items:
-            print("후보가 없습니다.")
-            continue
-        for index, item in enumerate(items[:display_limit], 1):
-            print(f"{index:>2}. [{item['group']}] {item['title']}")
-            print(f"    ⭐ {item['stars']:,} | Fork {item['forks']:,} | 점수 {item['score']}/100")
-            print(f"    언어: {item['language']} | 라이선스: {item['license']}")
-            print(f"    {item['description']}\n    {item['link']}")
-    print("\n참고: 최근 활동은 별점 증가량과 같지 않습니다. 선택 전 저장소와 라이선스를 확인하세요.")
-
-
-def fetch_repository_context(candidate: dict) -> dict:
-    """선택한 저장소의 메타데이터와 README를 가져옵니다."""
-    full_name = candidate.get("title", "")
-    if not full_name or "/" not in full_name or " " in full_name:
-        return {}
-    try:
-        repo = _request(f"{API_ROOT}/repos/{quote(full_name, safe='/')}")
-    except RequestException as exc:
-        print(f"[GitHub] 저장소 상세 정보 수집 실패: {exc}")
-        return {}
-    readme_text = ""
-    branch = repo.get("default_branch") or "main"
-    for filename in ("README.md", "README.rst", "README"):
-        url = f"https://raw.githubusercontent.com/{full_name}/{quote(branch, safe='')}/{filename}"
+        print(f"[GitHub] {group} / 인기 검색 중...")
         try:
-            response = SESSION.get(url, timeout=20, verify=SSL_VERIFY)
-            if response.status_code == 200:
-                readme_text = response.text[:16000]
-                break
-        except RequestException:
-            continue
-    license_info = repo.get("license") or {}
-    parts = [
-        f"프로젝트: {repo.get('full_name', full_name)}",
-        f"URL: {repo.get('html_url', candidate.get('link', ''))}",
-        f"설명: {repo.get('description') or '설명 없음'}",
-        f"주요 언어: {repo.get('language') or '미지정'}",
-        f"Stars: {repo.get('stargazers_count', 0)} / Forks: {repo.get('forks_count', 0)}",
-        f"생성일: {repo.get('created_at', '미확인')} / 최근 push: {repo.get('pushed_at', '미확인')}",
-        f"라이선스 SPDX: {license_info.get('spdx_id') or '미확인'}",
-        f"저장소 토픽: {', '.join(repo.get('topics') or []) or '없음'}",
-        f"보관(archived) 여부: {repo.get('archived', False)}",
-        "", "README (원문 참고 자료; 글에 그대로 복사하지 말 것):",
-        readme_text or "README를 가져오지 못했습니다. 저장소 페이지에서 직접 확인해야 합니다.",
-    ]
-    return {
-        "context_text": "\n".join(parts),
-        "source_url": repo.get("html_url", candidate.get("link")),
-        "sources": [{
-            "platform": "GitHub", "title": repo.get("full_name", full_name),
-            "url": repo.get("html_url", candidate.get("link")),
-            "author": (repo.get("owner") or {}).get("login"),
-        }],
-        "third_party": False,
-        "repository": repo,
-    }
+            payload = _request(
+                f"{API_ROOT}/search/repositories",
+                {"q": f"{base_query} archived:false", "per_page": min(100, per_query),
+                 "sort": "stars", "order": "desc"},
+            )
+            for item in payload.get("items", []):
+                full_name = item.get("full_name")
+                if full_name and item.get("html_url"):
+                    candidate = _candidate(item, group, "popular")
+                    if full_name not in popular or candidate["score"] > popular[full_name]["score"]:
+                        popular[full_name] = candidate
+        except RequestException as exc:
+            message = f"{group}/popular: {type(exc).__name__}: {exc}"
+            errors.append(message)
+            print(f"[경고] GitHub 검색 실패: {message}")
+        except (ValueError, KeyError) as exc:
+            errors.append(f"{group}/popular: {exc}")
+            print(f"[경고] 응답 처리 실패: {group}: {exc}")
+        time.sleep(0.3)
+
+    # 최근 push가 있는 저장소를 분야 구분 없이 추가 검색하고 토픽으로 범주를 표시합니다.
+    print("[GitHub] 전체 분야 / 최근 활동 검색 중...")
+    try:
+        payload = _request(
+            f"{API_ROOT}/search/repositories",
+            {"q": f"stars:>100 pushed:>{since} archived:false",
+             "per_page": min(100, per_query), "sort": "updated", "order": "desc"},
+        )
+        for item in payload.get("items", []):
+            full_name = item.get("full_name")
+            if not full_name or not item.get("html_url"):
+                continue
+            topics = item.get("topics") or []
+            group = next((label for label, marker in [
+                ("AI · 머신러닝", "machine-learning"), ("웹 · 프런트엔드", "web"),
+                ("개발 도구", "developer-tools"), ("클라우드 · 인프라", "devops"),
+                ("데이터베이스 · 데이터", "database"), ("보안", "security"),
+                ("게임 · 그래픽", "game-development"), ("생산성 · 자동화", "automation"),
+            ] if marker in topics), "기타 인기 프로젝트")
+            trending[full_name] = _candidate(item, group, "trending")
+    except RequestException as exc:
+        message = f"all/trending: {type(exc).__name__}: {exc}"
+        errors.append(message)
+        print(f"[경고] GitHub 최근 활동 검색 실패: {message}")
+    except (ValueError, KeyError) as exc:
+        errors.append(f"all/trending: {exc}")
+        print(f"[경고] 최근 활동 응답 처리 실패: {exc}")
+
