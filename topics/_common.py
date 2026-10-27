@@ -21,11 +21,12 @@ from typing import Callable
 from crewai import Task, Crew, Process
 
 import history
-from config import OUTPUT_DIR, LOG_DIR, QUALITY_ATTEMPTS
+from config import OUTPUT_DIR, LOG_DIR, QUALITY_ATTEMPTS, PUBLISH_TARGETS
 from crew_builder import build_scout_agent, build_writer_agent, build_reviewer_agent
 from verify.quality import refine_loop, detect_foreign_language_mixing
 from topics.note_format import parse_note_text
-from output.note import render_note, _FENCE_RE
+from output.note import render_note, render_note_en, _FENCE_RE
+from topics.translate import translate_note
 
 MAX_CONTEXT_ATTEMPTS = 4   # 상세 자료가 비어 있는 후보를 건너뛰며 시도할 최대 횟수
 
@@ -48,6 +49,9 @@ class TopicSpec:
     # 선택된 후보(dict) -> {"context_text": str, "source_url": str|None,
     #                       "sources": list, "images": list, "third_party": bool}
     build_context: Callable[[dict], dict]
+    # Optional English MDX output; translation is skipped unless a publish target configures en_posts_dir.
+    category_prefix_en: str = ""
+    section_names_en: tuple = ()
     min_section_chars: int = 40
     max_rounds: int = 5
     # 이 섹션에는 "실제 코드"가 담긴 ``` 블록이 있어야 통과 (주석만 있는 블록은 불인정)
@@ -323,6 +327,29 @@ def run_topic(spec: TopicSpec) -> dict:
         sources=sources,
         images=images,
     )
+
+    en_path = None
+    wants_english = result["passed"] and any(target.get("en_posts_dir") for target in PUBLISH_TARGETS)
+    if wants_english:
+        if not spec.category_prefix_en or len(spec.section_names_en) != len(spec.section_names):
+            print(f"[{spec.key}] 영문 발행 대상이 있지만 영어 섹션 설정이 없어 번역을 건너뜁니다.")
+        else:
+            en_data = translate_note(spec, data)
+            if en_data:
+                en_rendered = render_note_en(
+                    ko_result=rendered,
+                    title=en_data["title"],
+                    summary=en_data["summary"],
+                    tag=spec.tag,
+                    sections=en_data["sections"],
+                    section_map=dict(zip(spec.section_names, spec.section_names_en)),
+                    out_dir=OUTPUT_DIR / spec.key,
+                )
+                en_path = en_rendered["en_path"]
+                print(f"영문 MDX 저장됨: {en_path}")
+            else:
+                print(f"[{spec.key}] 영문 번역 검증에 실패해 영문판만 생략합니다. 한국어 글은 유지됩니다.")
+
     history.mark_used(spec.key, chosen.get("link"), chosen["title"])
 
     print(f"\n저장됨: {rendered['path']}")
@@ -341,4 +368,5 @@ def run_topic(spec: TopicSpec) -> dict:
         "ok": True, "passed": result["passed"], "title": title,
         "has_images": bool(rendered["image_files"]), "has_third_party": has_third_party,
         **rendered,
+        **({"en_path": en_path} if en_path else {}),
     }

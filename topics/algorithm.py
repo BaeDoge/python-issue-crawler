@@ -64,6 +64,8 @@ SPEC = TopicSpec(
         "접근인가(같은 풀이를 변수명만 바꾼 것이 아닌가)"
     ),
     build_context=_build_context,
+    category_prefix_en="[Coding Test]",
+    section_names_en=("Problem", "Approach", "Solution", "Alternative Approaches", "Additional Notes"),
     code_required_sections=("풀이",),
     extra_writer_rules=(
         "- 풀이: 전체 코드를 코드블록으로 넣고, 시간복잡도와 공간복잡도를 명시할 것\n"

@@ -69,6 +69,8 @@ WRITER_MAX_TOKENS = int(os.getenv("OMNIROUTE_WRITER_MAX_TOKENS", "6000"))
 # 검수 사이클 횟수. 각 사이클은 TopicSpec.max_rounds(기본 5라운드)까지 재작성합니다.
 QUALITY_ATTEMPTS = max(1, int(os.getenv("QUALITY_ATTEMPTS", "3")))
 llm_writer = _omni_llm(WRITER_MODEL, temperature=0.4, max_tokens=WRITER_MAX_TOKENS)
+# English translation uses the writer model with a lower temperature; it is only called when an English target is configured.
+llm_translator = _omni_llm(WRITER_MODEL, temperature=0.2, max_tokens=WRITER_MAX_TOKENS)
 llm_verifier = _omni_llm(VERIFIER_MODEL, temperature=0.1, max_tokens=2048)
 
 # -----------------------------------------------------------------------
@@ -114,10 +116,13 @@ def _load_publish_targets() -> list[dict]:
             raise ValueError(f"PUBLISH_TARGETS에 중복된 name이 있습니다: {name}")
         names.add(name)
 
+        en_posts_raw = str(item.get("en_posts_dir", "")).strip()
         relative_paths = {
             "posts_dir": posts_dir,
             "images_dir": str(item.get("images_dir", "public/blogs")).strip(),
         }
+        if en_posts_raw:
+            relative_paths["en_posts_dir"] = en_posts_raw
         for key, value in relative_paths.items():
             path = Path(value)
             if not value or path.is_absolute() or ".." in path.parts:
@@ -134,6 +139,7 @@ def _load_publish_targets() -> list[dict]:
             "name": name,
             "repo_path": Path(repo_raw).expanduser(),
             "posts_dir": Path(relative_paths["posts_dir"]),
+            "en_posts_dir": Path(relative_paths["en_posts_dir"]) if en_posts_raw else None,
             "category_subdirs": bool(item.get("category_subdirs", False)),
             "images_dir": Path(relative_paths["images_dir"]),
             "image_url_prefix": image_url_prefix.rstrip("/"),

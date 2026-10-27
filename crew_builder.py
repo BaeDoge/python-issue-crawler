@@ -7,7 +7,7 @@ CrewAI 에이전트 공통 빌더
 """
 
 from crewai import Agent
-from config import llm_scout, llm_writer, llm_verifier
+from config import llm_scout, llm_writer, llm_verifier, llm_translator
 
 COMMON_GUARDRAILS = (
     "⚠️ 항상 지킬 것: (1) 오직 한국어로만 쓴다 — 다른 언어 문자가 섞이면 안 된다. "
@@ -51,6 +51,24 @@ def build_reviewer_agent(*, role: str, goal: str, checklist: str) -> Agent:
             "문제가 있으면 통과시키지 않고 구체적으로 뭘 고쳐야 하는지 말한다."
         ),
         llm=llm_verifier,
+        verbose=True,
+        max_iter=2,
+        respect_context_window=True,
+    )
+
+
+
+def build_translator_agent() -> Agent:
+    """한국어 기술 노트를 영어로 번역한다. 한국어 전용 작성 규칙은 적용하지 않는다."""
+    return Agent(
+        role="Technical documentation translator",
+        goal="Translate Korean developer notes into accurate, natural English without changing technical meaning",
+        backstory=(
+            "Korean-to-English technical translator for developer documentation. Write concise, plain English. "
+            "Do not add or remove facts. Preserve code, error messages, file names, identifiers, and library names; "
+            "translate prose and comments only."
+        ),
+        llm=llm_translator,
         verbose=True,
         max_iter=2,
         respect_context_window=True,

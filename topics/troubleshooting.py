@@ -121,6 +121,8 @@ SPEC = TopicSpec(
         "단정하고 있지 않은가, 제목만 보고 어떤 에러인지 검색 가능한가"
     ),
     build_context=_build_context,
+    category_prefix_en="[Troubleshooting]",
+    section_names_en=("Symptom", "Cause", "Solution", "Alternative Solutions", "Additional Notes"),
     code_required_sections=("현상", "해결 방법"),
     forbidden_phrases={"해결 방법": ("기다려야", "수정할 수 없", "해결할 수 없", "불가능합니다",
                                       "방법이 없", "코드 수정 불가")},
