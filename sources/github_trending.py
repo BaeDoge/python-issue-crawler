@@ -163,3 +163,91 @@ def discover_github_candidates(limit: int | None = None) -> dict:
         errors.append(f"all/trending: {exc}")
         print(f"[경고] 최근 활동 응답 처리 실패: {exc}")
 
+    popular_items = sorted(popular.values(), key=lambda x: (x["stars"], x["score"]), reverse=True)
+    trending_items = sorted(
+        trending.values(),
+        key=lambda x: (x["pushed_days"] is not None and x["pushed_days"] <= 7, x["score"], x["stars"]),
+        reverse=True,
+    )
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    output_path = OUTPUT_DIR / f"github_opensource_candidates_{datetime.now():%Y%m%d_%H%M%S}.json"
+    payload = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "methodology": (
+            "GitHub Search API 기반 휴리스틱 후보입니다. GitHub 전체 트렌딩 순위나 별점 증가량을 "
+            "직접 측정한 결과가 아니며, 점수는 품질·보안·유지보수·라이선스 적합성을 보증하지 않습니다."
+        ),
+        "popular": popular_items,
+        "trending": trending_items,
+        "errors": errors,
+    }
+    output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"\nJSON 저장: {output_path}")
+    print(f"인기 후보 {len(popular_items)}개 / 최근 활동 후보 {len(trending_items)}개")
+    if errors:
+        print(f"검색 오류 {len(errors)}건. 네트워크/인증서 정책 또는 GitHub API 제한을 확인하세요.")
+    return payload
+
+
+def print_candidates(payload: dict, display_limit: int = 15) -> None:
+    for key, heading in (("popular", "인기 프로젝트"), ("trending", "최근 활동 프로젝트")):
+        print("\n" + "=" * 76 + "\n" + heading + "\n" + "=" * 76)
+        items = payload.get(key, [])
+        if not items:
+            print("후보가 없습니다.")
+            continue
+        for index, item in enumerate(items[:display_limit], 1):
+            print(f"{index:>2}. [{item['group']}] {item['title']}")
+            print(f"    ⭐ {item['stars']:,} | Fork {item['forks']:,} | 점수 {item['score']}/100")
+            print(f"    언어: {item['language']} | 라이선스: {item['license']}")
+            print(f"    {item['description']}\n    {item['link']}")
+    print("\n참고: 최근 활동은 별점 증가량과 같지 않습니다. 선택 전 저장소와 라이선스를 확인하세요.")
+
+
+def fetch_repository_context(candidate: dict) -> dict:
+    """선택한 저장소의 메타데이터와 README를 가져옵니다."""
+    full_name = candidate.get("title", "")
+    if not full_name or "/" not in full_name or " " in full_name:
+        return {}
+    try:
+        repo = _request(f"{API_ROOT}/repos/{quote(full_name, safe='/')}")
+    except RequestException as exc:
+        print(f"[GitHub] 저장소 상세 정보 수집 실패: {exc}")
+        return {}
+    readme_text = ""
+    branch = repo.get("default_branch") or "main"
+    for filename in ("README.md", "README.rst", "README"):
+        url = f"https://raw.githubusercontent.com/{full_name}/{quote(branch, safe='')}/{filename}"
+        try:
+            response = SESSION.get(url, timeout=20, verify=SSL_VERIFY)
+            if response.status_code == 200:
+                readme_text = response.text[:16000]
+                break
+        except RequestException:
+            continue
+    license_info = repo.get("license") or {}
+    parts = [
+        f"프로젝트: {repo.get('full_name', full_name)}",
+        f"URL: {repo.get('html_url', candidate.get('link', ''))}",
+        f"설명: {repo.get('description') or '설명 없음'}",
+        f"주요 언어: {repo.get('language') or '미지정'}",
+        f"Stars: {repo.get('stargazers_count', 0)} / Forks: {repo.get('forks_count', 0)}",
+        f"생성일: {repo.get('created_at', '미확인')} / 최근 push: {repo.get('pushed_at', '미확인')}",
+        f"라이선스 SPDX: {license_info.get('spdx_id') or '미확인'}",
+        f"저장소 토픽: {', '.join(repo.get('topics') or []) or '없음'}",
+        f"보관(archived) 여부: {repo.get('archived', False)}",
+        "",
+        "README (원문 참고 자료; 글에 그대로 복사하지 말 것):",
+        readme_text or "README를 가져오지 못했습니다. 저장소 페이지에서 직접 확인해야 합니다.",
+    ]
+    return {
+        "context_text": "\n".join(parts),
+        "source_url": repo.get("html_url", candidate.get("link")),
+        "sources": [{
+            "platform": "GitHub", "title": repo.get("full_name", full_name),
+            "url": repo.get("html_url", candidate.get("link")),
+            "author": (repo.get("owner") or {}).get("login"),
+        }],
+        "third_party": False,
+        "repository": repo,
+    }
