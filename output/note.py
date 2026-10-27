@@ -136,4 +136,68 @@ def render_note(
         "sources": sources, "image_files": image_files, **(refine_meta or {}),
     }, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    return {"path": out_path, "meta_path": meta_path, "slug": slug, "image_files": image_files}
+    image_refs = [
+        {"section": section, "url": image["url"], "alt": image.get("alt", section)}
+        for section, section_items in section_images.items()
+        for image in section_items
+    ]
+    return {
+        "path": out_path, "meta_path": meta_path, "slug": slug,
+        "image_files": image_files, "image_refs": image_refs, "sources": sources,
+    }
+
+
+
+def _source_line_en(src: dict) -> str:
+    platform = src.get("platform") or "Source"
+    label = src.get("title") or src["url"]
+    line = f"- {platform}: [{label}]({src['url']})"
+    author = src.get("author")
+    if author:
+        author = author.replace("(질문)", "(question)").replace("(답변)", "(answer)")
+        line += f" — Author: {author}"
+    if platform == "StackOverflow":
+        line += " (CC BY-SA)"
+    return line
+
+
+def render_note_en(
+    *, ko_result: dict, title: str, summary: str, tag: str,
+    sections: dict, section_map: dict, out_dir: Path,
+) -> dict:
+    """Write an English MDX beside the Korean note, reusing the Korean note's slug and image assets."""
+    en_dir = out_dir / "en"
+    en_dir.mkdir(parents=True, exist_ok=True)
+    out_path = en_dir / f"{ko_result['slug']}.mdx"
+
+    section_images: dict = {}
+    for ref in ko_result.get("image_refs", []):
+        en_section = section_map.get(ref["section"], ref["section"])
+        section_images.setdefault(en_section, []).append({
+            "url": ref["url"], "alt": f"{en_section} screenshot",
+        })
+
+    frontmatter = (
+        "---\\n"
+        f"title: {_yaml_str(title)}\\n"
+        f"publishedAt: {_yaml_str(f'{datetime.now():%Y-%m-%d}')}\\n"
+        f"summary: {_yaml_str(summary)}\\n"
+        f"tag: {_yaml_str(tag)}\\n"
+        "---\\n\\n"
+    )
+    body_parts = []
+    for header, content in sections.items():
+        block = f"## {header}\\n\\n{normalize_code_fences(content)}\\n"
+        for img in section_images.get(header, []):
+            block += f"\\n![{img['alt']}]({img['url']})\\n"
+        body_parts.append(block)
+
+    sources = ko_result.get("sources", [])
+    if sources:
+        src_block = "## Sources\\n\\n" + "\\n".join(_source_line_en(s) for s in sources) + "\\n"
+        if ko_result.get("image_files"):
+            src_block += "\\nImages are taken from the sources above.\\n"
+        body_parts.append(src_block)
+
+    out_path.write_text(frontmatter + "\\n".join(body_parts), encoding="utf-8")
+    return {"en_path": out_path}
