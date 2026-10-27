@@ -60,6 +60,9 @@ class TopicSpec:
     extra_writer_rules: str = ""
     # {"해결 방법": ("기다려야", ...)} — 해당 섹션에 이 표현이 있으면 재작성
     forbidden_phrases: dict = field(default_factory=dict)
+    # Long-form topics can override the default short-note style and require a minimum body size.
+    long_form_guidance: str = ""
+    min_total_chars: int = 0
 
 
 def _strip_think(s: str) -> str:
@@ -79,31 +82,63 @@ def has_real_code(content: str) -> bool:
     return False
 
 
+
 def _writer_prompt(spec: TopicSpec, chosen_title: str, context_text: str) -> str:
     sections_desc = "\n".join(f"- {s}" for s in spec.section_names)
+
+    # 주제별 작성 방식 분리
+    if spec.long_form_guidance:
+        mode_instruction = (
+            f"'{spec.label}' 장문 분석 블로그를 작성해라. "
+            "짧은 요약이나 README 재진술이 아니라, "
+            "독자가 주제의 배경부터 기술적 의미와 한계까지 "
+            "이해하게 만드는 심층 글이어야 한다.\n"
+            f"반드시 다음 섹션을 모두 충분히 채울 것:\n"
+            f"{sections_desc}\n\n"
+            f"{spec.long_form_guidance}\n\n"
+        )
+    else:
+        mode_instruction = (
+            f"'{spec.label}' 노트를 작성해라. "
+            "아래 섹션 구조로 정보를 담백하고 명확하게 전달해라"
+            "(각 섹션 2~6문장, 필요하면 코드 블록 포함):\n"
+            f"{sections_desc}\n\n"
+        )
+
     return (
         f"소재: {chosen_title}\n\n"
         f"--- 참고 자료 ---\n{context_text}\n--- 끝 ---\n\n"
-        f"'{spec.label}' 노트를 작성해라. 블로그처럼 길게 풀어쓰지 말고, 아래 섹션 "
-        f"구조로 정보를 담백하고 명확하게 전달해라(각 섹션 2~6문장, 필요하면 코드 "
-        f"블록 포함):\n{sections_desc}\n\n"
-        "**반드시 지킬 것:**\n"
-        "- 참고 자료에 없는 사실을 지어내지 말 것. 참고 자료의 문장을 그대로 복사하지 말고 "
-        "자기 말로 정리할 것\n"
-        "- 코드블록은 ```언어 로 시작해서 ```로 닫고, 여는/닫는 ``` 모두 반드시 새 줄에 쓸 것"
+        + mode_instruction
+        + "**반드시 지킬 것:**\n"
+        "- 참고 자료에 없는 사실을 지어내지 말 것. "
+        "참고 자료의 문장을 그대로 복사하지 말고 자기 말로 정리할 것\n"
+        "- 코드블록은 ```언어 로 시작해서 ```로 닫고, "
+        "여는/닫는 ``` 모두 반드시 새 줄에 쓸 것"
         "(문장 중간에 ``` 를 붙여 쓰지 말 것)\n"
-        "- title은 반드시 \"" + spec.category_prefix + " 핵심 키워드\" 형식으로, 15~30자 내외, "
+        "- title은 반드시 \""
+        + spec.category_prefix
+        + " 핵심 키워드\" 형식으로, 15~30자 내외, "
         "과장되거나 극적인 표현 없이 담백하게\n"
-        "- summary는 1문장, 광고 카피처럼 쓰지 말고 무엇을 다루는지만 명확하게\n"
+        "- summary는 1문장, 광고 카피처럼 쓰지 말고 "
+        "무엇을 다루는지만 명확하게\n"
         "- 파일명·함수명·키·명령어는 본문에서 `백틱`으로 감쌀 것\n"
-        "- summary에서 원인을 단정하지 말 것 — 참고 자료로 확인되지 않은 원인은 본문에서도 "
+        "- summary에서 원인을 단정하지 말 것. "
+        "참고 자료로 확인되지 않은 원인은 본문에서도 "
         "'~로 추정됩니다'로 구분할 것\n"
-        + (spec.extra_writer_rules + "\n" if spec.extra_writer_rules else "")
+        + (
+            spec.extra_writer_rules + "\n"
+            if spec.extra_writer_rules
+            else ""
+        )
         + "\n**출력 형식 (이 형식만 사용하고 앞뒤에 다른 설명을 붙이지 말 것):**\n\n"
-        f"제목: {spec.category_prefix} 핵심 키워드\n"
-        "요약: 한 문장\n\n"
-        + "\n\n".join(f"## {s}\n(본문 — 코드는 ```언어 ... ``` 블록으로)" for s in spec.section_names)
-        + "\n\n(섹션 헤더는 위와 똑같이 '## 섹션명'으로 쓰고, 모든 섹션을 빠짐없이 쓸 것)"
+        + f"제목: {spec.category_prefix} 핵심 키워드\n"
+        + "요약: 한 문장\n\n"
+        + "\n\n".join(
+            f"## {section}\n(본문 — 코드는 ```언어 ... ``` 블록으로)"
+            for section in spec.section_names
+        )
+        + "\n\n(섹션 헤더는 위와 똑같이 '## 섹션명'으로 쓰고, "
+        "모든 섹션을 빠짐없이 쓸 것)"
     )
 
 
@@ -144,6 +179,12 @@ def _deterministic_check(spec: TopicSpec):
                                   "해결 조치를 써야 함(기다리라거나 불가능하다는 내용은 불합격)")
 
         all_text = title + " " + json.dumps(sections, ensure_ascii=False)
+        body_chars = sum(len((sections.get(name) or "").strip()) for name in spec.section_names)
+        if spec.min_total_chars and body_chars < spec.min_total_chars:
+            issues.append(
+                f"본문이 장문 기준보다 짧음(현재 {body_chars}자, 최소 {spec.min_total_chars}자). "
+                "배경·기술적 동작 원리·구체적인 활용 사례·한계와 위험을 근거 중심으로 확장할 것"
+            )
         issues += detect_foreign_language_mixing(all_text)
         return {"passed": not issues, "issues": issues}
     return check
