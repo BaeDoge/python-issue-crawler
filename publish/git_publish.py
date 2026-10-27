@@ -84,6 +84,19 @@ def _publish_to_repo(
             note_content = note_content.replace("/blogs/", image_url_prefix + "/")
         dest_path.write_text(note_content, encoding="utf-8", newline="\n")
 
+        en_posts_dir = target.get("en_posts_dir")
+        en_note_path = note_path.parent / "en" / note_path.name
+        en_dest_path = None
+        if en_posts_dir and en_note_path.is_file():
+            en_dest_path = repo_path / _safe_relative(en_posts_dir) / note_path.name
+            en_dest_path.parent.mkdir(parents=True, exist_ok=True)
+            en_content = en_note_path.read_text(encoding="utf-8")
+            if image_url_prefix != "/blogs":
+                en_content = en_content.replace("/blogs/", image_url_prefix + "/")
+            en_dest_path.write_text(en_content, encoding="utf-8", newline="\\n")
+        elif en_posts_dir:
+            print(f"{name}: 영문 MDX가 없어 한국어판만 발행합니다: {en_note_path}")
+
         images_dir = _safe_relative(target["images_dir"])
         copied_images = []
         for image in image_files or []:
@@ -99,6 +112,8 @@ def _publish_to_repo(
             copied_images.append(image_dest)
 
         staged_paths = [dest_path.relative_to(repo_path), *[p.relative_to(repo_path) for p in copied_images]]
+        if en_dest_path is not None:
+            staged_paths.append(en_dest_path.relative_to(repo_path))
         _run_git(repo_path, "add", "--", *[str(p) for p in staged_paths])
         staged = _run_git(repo_path, "diff", "--cached", "--name-only")
         if not staged:
