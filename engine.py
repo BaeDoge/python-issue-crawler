@@ -39,6 +39,7 @@ from publish.git_publish import publish_note
 def _parse_args():
     parser = argparse.ArgumentParser(description="트러블슈팅/알고리즘 노트를 생성하고 설정된 저장소에 발행합니다")
     parser.add_argument("--topic", choices=[*TOPICS.keys(), "both"], help="생성할 주제 (생략하면 메뉴가 뜸)")
+    parser.add_argument("--discover-opensource", action="store_true", help="GitHub 인기/최근 활동 후보만 탐색하고 목록을 출력 (글 생성/발행 안 함)")
     parser.add_argument("--count", type=int, default=1,
                         help="주제별 생성 편수 (기본값: 1, --topic both이면 각 주제에 적용)")
     parser.add_argument("--stop-on-error", action="store_true",
@@ -118,6 +119,12 @@ def main():
     if args.diagnose:
         from diagnose import run_diagnose
         run_diagnose()
+        return
+
+    if args.discover_opensource:
+        from sources.github_trending import discover_github_candidates, print_candidates
+        payload = discover_github_candidates()
+        print_candidates(payload)
         return
 
     if args.publish_draft:
