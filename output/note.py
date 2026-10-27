@@ -178,26 +178,26 @@ def render_note_en(
         })
 
     frontmatter = (
-        "---\\n"
-        f"title: {_yaml_str(title)}\\n"
-        f"publishedAt: {_yaml_str(f'{datetime.now():%Y-%m-%d}')}\\n"
-        f"summary: {_yaml_str(summary)}\\n"
-        f"tag: {_yaml_str(tag)}\\n"
-        "---\\n\\n"
+        "---\n"
+        f"title: {_yaml_str(title)}\n"
+        f"publishedAt: {_yaml_str(f'{datetime.now():%Y-%m-%d}')}\n"
+        f"summary: {_yaml_str(summary)}\n"
+        f"tag: {_yaml_str(tag)}\n"
+        "---\n\n"
     )
     body_parts = []
     for header, content in sections.items():
-        block = f"## {header}\\n\\n{normalize_code_fences(content)}\\n"
+        block = f"## {header}\n\n{normalize_code_fences(content)}\n"
         for img in section_images.get(header, []):
-            block += f"\\n![{img['alt']}]({img['url']})\\n"
+            block += f"\n![{img['alt']}]({img['url']})\n"
         body_parts.append(block)
 
     sources = ko_result.get("sources", [])
     if sources:
-        src_block = "## Sources\\n\\n" + "\\n".join(_source_line_en(s) for s in sources) + "\\n"
+        src_block = "## Sources\n\n" + "\n".join(_source_line_en(s) for s in sources) + "\n"
         if ko_result.get("image_files"):
-            src_block += "\\nImages are taken from the sources above.\\n"
+            src_block += "\nImages are taken from the sources above.\n"
         body_parts.append(src_block)
 
-    out_path.write_text(frontmatter + "\\n".join(body_parts), encoding="utf-8")
+    out_path.write_text(frontmatter + "\n".join(body_parts), encoding="utf-8")
     return {"en_path": out_path}
