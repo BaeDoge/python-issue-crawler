@@ -228,34 +228,95 @@ def fetch_repository_context(candidate: dict) -> dict:
     except (RequestException, ValueError) as exc:
         print(f"[GitHub] 파일 트리 조회 실패(메타데이터로 계속 진행): {exc}")
 
-    # README만 요약하지 않도록 아키텍처 문서, 보안 문서, 의존성 선언, 구현 파일을 함께 수집합니다.
+    # README뿐 아니라 라이선스/설계 문서, 대표 예제 문서, 실제 구현 파일을 별도로 고릅니다.
     preferred_exact = [
         "README.md", "README.rst", "README", "SECURITY.md", "CONTRIBUTING.md",
-        "ARCHITECTURE.md", "docs/architecture.md", "package.json", "pyproject.toml",
+        "ARCHITECTURE.md", "docs/architecture.md", "LICENSE.txt", "LICENSE",
+        "LICENSE.md", "COPYING", "COPYING.md", "pyproject.toml", "package.json",
         "Cargo.toml", "go.mod", "pom.xml", "build.gradle", "Dockerfile",
-        "LICENSE", "LICENSE.md", "AGENTS.md",
     ]
-    selected_paths = [p for p in preferred_exact if p in tree_paths]
-    source_candidates = [
+    selected_paths = [p for p in preferred_exact if p in tree_paths][:7]
+
+    code_extensions = (".py", ".ts", ".tsx", ".js", ".mjs", ".go", ".rs", ".java", ".c", ".cc", ".cpp", ".h")
+    ignored_parts = (
+        "node_modules/", "vendor/", "dist/", "build/", "target/", "generated/",
+        "coverage/", ".git/", "third_party/", "site-packages/", "lock",
+    )
+
+    def _path_score(path: str) -> int:
+        lower = path.lower()
+        name = lower.rsplit("/", 1)[-1]
+        score = 0
+        if lower.startswith(("src/", "lib/", "app/")) or "/src/" in lower or "/lib/" in lower:
+            score += 50
+        if lower.startswith(("solutions/", "examples/", "example/")) or any(
+            marker in lower for marker in ("/solutions/", "/examples/", "/example/")
+        ):
+            score += 45
+        if any(word in lower for word in (
+            "main.", "core.", "engine.", "client.", "server.", "parser.", "agent.",
+            "api.", "service.", "database.", "cache.", "pipeline.",
+        )):
+            score += 20
+        if any(word in lower for word in ("test_", "_test.", ".spec.", ".test.")):
+            score -= 35
+        if name in {"__init__.py", "index.js", "index.ts", "index.tsx"}:
+            score -= 5
+        return score
+
+    code_candidates = [
         p for p in tree_paths
-        if any(token in p.lower() for token in (
-            "mcp", "server", "agent", "analy", "reverse", "decompil", "security",
-            "architecture", "plugin", "tool", "parser", "entry"
-        ))
-        and p.lower().endswith((".py", ".ts", ".tsx", ".js", ".mjs", ".go", ".rs", ".java", ".md", ".mdx"))
-        and not any(part in p.lower() for part in ("node_modules/", "vendor/", "dist/", "build/", "lock"))
+        if p.lower().endswith(code_extensions)
+        and not any(part in p.lower() for part in ignored_parts)
+        and len(p) < 180
     ]
-    for path in source_candidates:
-        if path not in selected_paths:
-            selected_paths.append(path)
-    selected_paths = selected_paths[:9]
+    code_candidates.sort(key=lambda p: (-_path_score(p), len(p), p.lower()))
+
+    # 프로젝트 소스/예제의 서로 다른 디렉터리에서 최대 3개 구현 파일을 가져옵니다.
+    chosen_code_dirs = set()
+    for path in code_candidates:
+        parent = path.rsplit("/", 1)[0] if "/" in path else ""
+        if parent in chosen_code_dirs or path in selected_paths:
+            continue
+        selected_paths.append(path)
+        chosen_code_dirs.add(parent)
+        if len(chosen_code_dirs) >= 3:
+            break
+
+    # 튜토리얼/설계 가이드가 핵심인 저장소도 있으므로, 대표 예제 문서를 최대 2개 보충합니다.
+    example_docs = [
+        p for p in tree_paths
+        if p.lower().endswith((".md", ".mdx", ".rst"))
+        and p not in selected_paths
+        and any(marker in p.lower() for marker in (
+            "/solutions/", "/examples/", "/example/", "/docs/",
+        ))
+        and not any(token in p.lower() for token in (
+            "readme-ja", "readme-zh", "readme-ko", "readme-zh-tw", "translation",
+            "changelog", "release-notes",
+        ))
+        and len(p) < 180
+    ]
+    example_docs.sort(key=lambda p: (0 if "readme.md" in p.lower() else 1, len(p), p.lower()))
+    chosen_doc_dirs = set()
+    for path in example_docs:
+        parent = path.rsplit("/", 1)[0] if "/" in path else ""
+        if parent in chosen_doc_dirs:
+            continue
+        selected_paths.append(path)
+        chosen_doc_dirs.add(parent)
+        if len(chosen_doc_dirs) >= 2:
+            break
+
+    # 긴 저장소에서도 컨텍스트 크기를 제한하고, tree path만 보고 내부 동작을 추정하지 않습니다.
+    selected_paths = selected_paths[:12]
 
     for path in selected_paths:
         url = f"https://raw.githubusercontent.com/{full_name}/{quote(branch, safe='')}/{quote(path, safe='/')}"
         try:
             response = SESSION.get(url, timeout=20, verify=SSL_VERIFY)
             if response.status_code == 200 and len(response.text) < 180_000:
-                file_texts.append((path, response.text[:7000]))
+                file_texts.append((path, response.text[:6000]))
         except RequestException:
             continue
 
