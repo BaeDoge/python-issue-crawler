@@ -204,7 +204,9 @@ def _similar_issue_sets(left: list[str], right: list[str]) -> bool:
 
 
 def _quality_issues(result: dict) -> list[str]:
-    """마지막 검수 라운드의 지적 사항만 추출한다."""
+    """최선의 초안에 대응하는 검수 지적을 추출한다."""
+    if "final_issues" in result:
+        return [str(issue).strip() for issue in (result.get("final_issues") or []) if str(issue).strip()]
     items = result.get("history", []) or []
     if not items:
         return []
@@ -215,9 +217,11 @@ def _quality_issues(result: dict) -> list[str]:
     return [str(issue).strip() for issue in (issues or []) if str(issue).strip()]
 
 def _quality_score(result: dict) -> int:
-    """통과 결과가 최우선이며, 미통과 결과끼리는 마지막 라운드의 지적 수가 적은 것을 선택한다."""
+    """통과 결과가 최우선이며, 미통과 결과는 최선의 초안에 대한 지적 수로 비교한다."""
     if result.get("passed"):
         return -1
+    if "final_issues" in result:
+        return len(result.get("final_issues") or [])
     history_items = result.get("history") or []
     if not history_items:
         return 10_000
