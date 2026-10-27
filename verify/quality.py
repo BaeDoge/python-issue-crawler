@@ -83,6 +83,10 @@ def refine_loop(
     history = []
     last_raw = ""
     previous_issues: list[str] = []
+    stopped_early = False
+    best_raw = ""
+    best_issues: list[str] = []
+    best_score = float("inf")
 
     for round_no in range(1, max_rounds + 1):
         write_task = Task(description=prompt, expected_output=expected_output, agent=writer_agent)
@@ -93,10 +97,14 @@ def refine_loop(
         det = deterministic_check_fn(raw)
         if not det["passed"]:
             issues = det["issues"]
+            draft_score = 1000 + len(issues)
+            if draft_score < best_score:
+                best_raw, best_issues, best_score = raw, [str(item) for item in issues], draft_score
             print(f"{log_prefix}[{round_no}라운드] 기계적 검사 실패: {issues}")
             history.append({"round": round_no, "stage": "deterministic", "issues": issues, "raw_head": raw[:2500]})
             if stop_on_repeated_issues and previous_issues and _similar_issue_sets(previous_issues, issues):
                 print(f"{log_prefix}[{round_no}라운드] 같은 기계적 오류가 반복되어 추가 재작성을 중단합니다.")
+                stopped_early = True
                 break
             previous_issues = [str(item) for item in issues]
             prompt = (
@@ -125,10 +133,14 @@ def refine_loop(
             return {"raw": raw, "passed": True, "rounds": round_no, "history": history}
 
         issues = verdict.get("issues", [])
-        print(f"{log_prefix}[{round_no}라운드] 검수 미통과: {issues}")
         issue_list = [str(item) for item in issues]
+        draft_score = len(issue_list)
+        if draft_score < best_score:
+            best_raw, best_issues, best_score = raw, issue_list, draft_score
+        print(f"{log_prefix}[{round_no}라운드] 검수 미통과: {issues}")
         if stop_on_repeated_issues and previous_issues and _similar_issue_sets(previous_issues, issue_list):
             print(f"{log_prefix}[{round_no}라운드] 검수 지적이 반복되어 추가 재작성을 중단합니다.")
+            stopped_early = True
             break
         previous_issues = issue_list
         prompt = (
@@ -137,5 +149,14 @@ def refine_loop(
             + "\n".join(f"- {i}" for i in issues)
         )
 
-    print(f"{log_prefix}최대 라운드({max_rounds}) 도달 — 마지막 결과로 진행")
-    return {"raw": last_raw, "passed": False, "rounds": len(history), "history": history}
+    if stopped_early:
+        print(f"{log_prefix}동일한 지적이 반복되어 조기 종료 — 지적 수가 가장 적은 초안을 보존합니다.")
+    else:
+        print(f"{log_prefix}최대 라운드({max_rounds}) 도달 — 가장 나은 초안을 보존합니다.")
+    return {
+        "raw": best_raw or last_raw,
+        "passed": False,
+        "rounds": len(history),
+        "history": history,
+        "final_issues": best_issues,
+    }
