@@ -206,17 +206,26 @@ def _quality_score(result: dict) -> int:
 
 def _refine_with_retries(*, writer_agent, critic_agent, initial_prompt: str,
                          critique_instructions: str, expected_output: str,
-                         deterministic_check_fn, max_rounds: int, log_prefix: str) -> dict:
-    """검수 사이클을 반복하고, 통과 결과가 없으면 가장 나은 초안을 보존한다."""
-    attempts = max(1, QUALITY_ATTEMPTS)
+                         deterministic_check_fn, max_rounds: int, log_prefix: str,
+                         stop_on_repeated_issues: bool = False) -> dict:
+    """검수 사이클을 반복하고, 통과 결과가 없으면 가장 나은 초안을 보존한다.
+
+    장문 주제는 같은 검수 지적이 반복될 때 재작성 루프를 조기에 종료해 토큰과 시간을 낭비하지 않는다.
+    짧은 알고리즘/트러블슈팅 주제는 기존 재시도 동작을 유지한다.
+    """
+    configured_attempts = max(1, QUALITY_ATTEMPTS)
+    attempts = min(configured_attempts, 2) if stop_on_repeated_issues else configured_attempts
     best_result = None
     best_score = 10_000
     best_attempt = 1
     all_history = []
     total_rounds = 0
+    completed_attempts = 0
     retry_prompt = initial_prompt
+    previous_attempt_issues: list[str] = []
 
     for attempt in range(1, attempts + 1):
+        completed_attempts = attempt
         print(f"{log_prefix}품질 검수 시도 {attempt}/{attempts} (시도당 최대 {max_rounds}라운드)")
         current = refine_loop(
             writer_agent=writer_agent, critic_agent=critic_agent,
@@ -226,6 +235,7 @@ def _refine_with_retries(*, writer_agent, critic_agent, initial_prompt: str,
             deterministic_check_fn=deterministic_check_fn,
             max_rounds=max_rounds,
             log_prefix=f"{log_prefix}[시도 {attempt}/{attempts}] ",
+            stop_on_repeated_issues=stop_on_repeated_issues,
         )
         total_rounds += int(current.get("rounds", 0))
         all_history.extend({"attempt": attempt, **entry} for entry in current.get("history", []))
@@ -241,23 +251,34 @@ def _refine_with_retries(*, writer_agent, critic_agent, initial_prompt: str,
                     "best_attempt": attempt, "history": all_history}
 
         issues = _quality_issues(current)
+        if stop_on_repeated_issues and previous_attempt_issues and _similar_issue_sets(previous_attempt_issues, issues):
+            print(
+                f"{log_prefix}직전 시도와 검수 지적이 사실상 같아 추가 재시도를 중단합니다. "
+                "최선의 결과물을 보존합니다."
+            )
+            break
+
+        previous_attempt_issues = issues
         if attempt < attempts:
             feedback = "\n".join(f"- {issue}" for issue in issues)
             if not feedback:
-                feedback = "- 이전 초안이 품질 기준을 통과하지 못한 원인을 다시 점검할 것"
+                feedback = "- 이전 초안이 품질 기준을 통과하지 못한 원인을 구체적으로 다시 점검할 것"
             retry_prompt = (
                 f"{initial_prompt}\n\n"
-                f"--- 이전 품질 검수 시도 {attempt}가 최대 {max_rounds}라운드 후에도 미통과 ---\n"
-                "같은 소재를 유지하되 이전 초안을 그대로 반복하지 말고, 아래 지적 사항을 우선 해결해 "
-                "처음부터 완성도 높은 새 초안을 작성할 것. 사실을 새로 지어내지 말고 참고 자료를 근거로 할 것.\n"
+                f"--- 이전 품질 검수 시도 {attempt} 미통과 ---\n"
+                "같은 소재를 유지하되 이전 초안을 그대로 반복하지 말고, 아래 지적을 해결한 새 초안을 작성할 것. "
+                "이미 충족한 항목은 다시 늘리지 말고, 확인되지 않은 사실을 추가하지 말 것.\n"
                 f"{feedback}"
             )
-            print(f"{log_prefix}시도 {attempt} 미통과. 같은 소재로 새 검수 사이클을 시작합니다.")
+            print(f"{log_prefix}시도 {attempt} 미통과. 지적 사항을 반영해 새 검수 사이클을 시작합니다.")
 
     assert best_result is not None
-    print(f"{log_prefix}품질 검수 {attempts}회 시도, 총 {total_rounds}라운드 후에도 미통과. {best_attempt}번째 시도의 결과물을 보존합니다.")
+    print(
+        f"{log_prefix}품질 검수 {completed_attempts}회 시도, 총 {total_rounds}라운드 후에도 미통과. "
+        f"{best_attempt}번째 시도의 결과물을 보존합니다."
+    )
     return {**best_result, "passed": False, "rounds": total_rounds,
-            "attempts": attempts, "best_attempt": best_attempt, "history": all_history}
+            "attempts": completed_attempts, "best_attempt": best_attempt, "history": all_history}
 
 def run_topic(spec: TopicSpec) -> dict:
     candidates = [c for c in spec.gather_candidates() if not history.is_used(spec.key, c.get("link"))]
@@ -311,6 +332,7 @@ def run_topic(spec: TopicSpec) -> dict:
         deterministic_check_fn=_deterministic_check(spec),
         max_rounds=spec.max_rounds,
         log_prefix=f"[{spec.key}] ",
+        stop_on_repeated_issues=bool(spec.long_form_guidance),
     )
 
     data = parse_note_text(result["raw"], spec.section_names)
