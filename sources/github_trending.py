@@ -231,11 +231,11 @@ def fetch_repository_context(candidate: dict) -> dict:
     # README뿐 아니라 라이선스/설계 문서, 대표 예제 문서, 실제 구현 파일을 별도로 고릅니다.
     preferred_exact = [
         "README.md", "README.rst", "README", "SECURITY.md", "CONTRIBUTING.md",
-        "ARCHITECTURE.md", "docs/architecture.md", "LICENSE.txt", "LICENSE",
-        "LICENSE.md", "COPYING", "COPYING.md", "pyproject.toml", "package.json",
+        "LICENSE.txt", "LICENSE", "LICENSE.md", "COPYING", "COPYING.md",
+        "ARCHITECTURE.md", "docs/architecture.md", "pyproject.toml", "package.json",
         "Cargo.toml", "go.mod", "pom.xml", "build.gradle", "Dockerfile",
     ]
-    selected_paths = [p for p in preferred_exact if p in tree_paths][:7]
+    selected_paths = [p for p in preferred_exact if p in tree_paths][:6]
 
     code_extensions = (".py", ".ts", ".tsx", ".js", ".mjs", ".go", ".rs", ".java", ".c", ".cc", ".cpp", ".h")
     ignored_parts = (
@@ -281,7 +281,7 @@ def fetch_repository_context(candidate: dict) -> dict:
             continue
         selected_paths.append(path)
         chosen_code_dirs.add(parent)
-        if len(chosen_code_dirs) >= 3:
+        if len(chosen_code_dirs) >= 2:
             break
 
     # 튜토리얼/설계 가이드가 핵심인 저장소도 있으므로, 대표 예제 문서를 최대 2개 보충합니다.
@@ -310,14 +310,14 @@ def fetch_repository_context(candidate: dict) -> dict:
             break
 
     # 긴 저장소에서도 컨텍스트 크기를 제한하고, tree path만 보고 내부 동작을 추정하지 않습니다.
-    selected_paths = selected_paths[:12]
+    selected_paths = selected_paths[:10]
 
     for path in selected_paths:
         url = f"https://raw.githubusercontent.com/{full_name}/{quote(branch, safe='')}/{quote(path, safe='/')}"
         try:
             response = SESSION.get(url, timeout=20, verify=SSL_VERIFY)
             if response.status_code == 200 and len(response.text) < 180_000:
-                file_texts.append((path, response.text[:6000]))
+                file_texts.append((path, response.text[:5000]))
         except RequestException:
             continue
 
@@ -335,7 +335,7 @@ def fetch_repository_context(candidate: dict) -> dict:
         f"기본 브랜치: {branch}",
         "",
         "저장소 파일 경로(일부):",
-        "\n".join(f"- {p}" for p in tree_paths[:180]) or "파일 트리를 가져오지 못했습니다.",
+        "\n".join(f"- {p}" for p in tree_paths[:120]) or "파일 트리를 가져오지 못했습니다.",
         "",
         "추가로 수집한 공식 저장소 파일(원문 자료, 그대로 복사하지 말 것):",
     ]
