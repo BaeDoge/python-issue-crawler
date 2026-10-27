@@ -240,7 +240,8 @@ def fetch_repository_context(candidate: dict) -> dict:
     code_extensions = (".py", ".ts", ".tsx", ".js", ".mjs", ".go", ".rs", ".java", ".c", ".cc", ".cpp", ".h")
     ignored_parts = (
         "node_modules/", "vendor/", "dist/", "build/", "target/", "generated/",
-        "coverage/", ".git/", "third_party/", "site-packages/", "lock",
+        "coverage/", ".git/", "third_party/", "site-packages/", "package-lock",
+        "pnpm-lock", "yarn.lock", ".lock",
     )
 
     def _path_score(path: str) -> int:
