@@ -30,11 +30,19 @@ def build_scout_agent(*, judging_criteria: str) -> Agent:
     )
 
 
-def build_writer_agent(*, role: str, goal: str, backstory: str) -> Agent:
+def build_writer_agent(*, role: str, goal: str, backstory: str, long_form: bool = False) -> Agent:
+    style_guardrails = (
+        "장문 기술 블로그 작성 모드: 자연스럽게 이어지는 설명형 문체를 사용하고, 독자가 배경·핵심 원리·실제 사례·한계까지 "
+        "이해하도록 충분히 설명한다. 짧게 쓰라는 기본 규칙보다 주제별 분량과 분석 지침을 우선한다. "
+        "그렇더라도 같은 결론을 반복하거나 근거 없는 추측으로 분량을 늘리지 않는다. "
+        "프로젝트에서 확인한 사실, 일반적 배경지식, 분석자의 해석을 구분하고, 확인할 수 없는 파일·기능·수치를 만들지 않는다. "
+        "출처는 실제로 읽은 공식 자료에만 연결한다."
+        if long_form else COMMON_GUARDRAILS
+    )
     return Agent(
         role=role,
         goal=goal,
-        backstory=f"{backstory}\n\n{COMMON_GUARDRAILS}",
+        backstory=f"{backstory}\n\n{style_guardrails}",
         llm=llm_writer,
         verbose=True,
         max_iter=3,

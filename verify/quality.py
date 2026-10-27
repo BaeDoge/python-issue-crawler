@@ -8,6 +8,7 @@
 
 import json
 import re
+from difflib import SequenceMatcher
 
 from crewai import Task, Crew, Process
 
@@ -48,15 +49,44 @@ def detect_foreign_language_mixing(text: str) -> list[str]:
     return []
 
 
+def _normalize_issue(issue: str) -> str:
+    """검수 지적의 표현 차이를 줄여 같은 문제인지 비교한다."""
+    value = (issue or "").casefold()
+    value = re.sub(r"\b(?:현재\s*)?\d+[\d,]*(?:자|개|회|라운드)?\b", " ", value)
+    value = re.sub(r"[^0-9a-z가-힣]+", " ", value)
+    return " ".join(value.split())
+
+
+def _similar_issue_sets(left: list[str], right: list[str]) -> bool:
+    """연속 검수 라운드의 지적이 대부분 같으면 재작성을 멈춘다."""
+    left_norm = {_normalize_issue(x) for x in left if _normalize_issue(x)}
+    right_norm = {_normalize_issue(x) for x in right if _normalize_issue(x)}
+    if not left_norm or not right_norm:
+        return False
+    if left_norm == right_norm:
+        return True
+    matched = sum(
+        1 for a in left_norm
+        if any(SequenceMatcher(None, a, b).ratio() >= 0.84 for b in right_norm)
+    )
+    return matched / max(len(left_norm), len(right_norm)) >= 0.8
+
+
 def refine_loop(
     *, writer_agent, critic_agent, initial_prompt: str,
     critique_instructions: str, expected_output: str,
     deterministic_check_fn, max_rounds: int = 5, log_prefix: str = "",
+    stop_on_repeated_issues: bool = False,
 ) -> dict:
     """반환: {"raw": 최종 원본 텍스트, "passed": bool, "rounds": int, "history": [...]}"""
     prompt = initial_prompt
     history = []
     last_raw = ""
+    previous_issues: list[str] = []
+    stopped_early = False
+    best_raw = ""
+    best_issues: list[str] = []
+    best_score = float("inf")
 
     for round_no in range(1, max_rounds + 1):
         write_task = Task(description=prompt, expected_output=expected_output, agent=writer_agent)
@@ -67,8 +97,17 @@ def refine_loop(
         det = deterministic_check_fn(raw)
         if not det["passed"]:
             issues = det["issues"]
+            if stop_on_repeated_issues:
+                draft_score = 1000 + len(issues)
+                if draft_score < best_score:
+                    best_raw, best_issues, best_score = raw, [str(item) for item in issues], draft_score
             print(f"{log_prefix}[{round_no}라운드] 기계적 검사 실패: {issues}")
             history.append({"round": round_no, "stage": "deterministic", "issues": issues, "raw_head": raw[:2500]})
+            if stop_on_repeated_issues and previous_issues and _similar_issue_sets(previous_issues, issues):
+                print(f"{log_prefix}[{round_no}라운드] 같은 기계적 오류가 반복되어 추가 재작성을 중단합니다.")
+                stopped_early = True
+                break
+            previous_issues = [str(item) for item in issues]
             prompt = (
                 f"{initial_prompt}\n\n"
                 f"--- 이전 시도에서 아래 문제가 발견됨, 반드시 고쳐서 다시 작성할 것 ---\n"
@@ -95,12 +134,35 @@ def refine_loop(
             return {"raw": raw, "passed": True, "rounds": round_no, "history": history}
 
         issues = verdict.get("issues", [])
+        issue_list = [str(item) for item in issues]
+        if stop_on_repeated_issues:
+            draft_score = len(issue_list)
+            if draft_score < best_score:
+                best_raw, best_issues, best_score = raw, issue_list, draft_score
         print(f"{log_prefix}[{round_no}라운드] 검수 미통과: {issues}")
+        if stop_on_repeated_issues and previous_issues and _similar_issue_sets(previous_issues, issue_list):
+            print(f"{log_prefix}[{round_no}라운드] 검수 지적이 반복되어 추가 재작성을 중단합니다.")
+            stopped_early = True
+            break
+        previous_issues = issue_list
         prompt = (
             f"{initial_prompt}\n\n"
             f"--- 검수자가 아래 문제를 지적함, 반드시 고쳐서 다시 작성할 것 ---\n"
             + "\n".join(f"- {i}" for i in issues)
         )
 
-    print(f"{log_prefix}최대 라운드({max_rounds}) 도달 — 마지막 결과로 진행")
-    return {"raw": last_raw, "passed": False, "rounds": max_rounds, "history": history}
+    if stopped_early:
+        print(f"{log_prefix}동일한 지적이 반복되어 조기 종료 — 지적 수가 가장 적은 초안을 보존합니다.")
+    elif stop_on_repeated_issues:
+        print(f"{log_prefix}최대 라운드({max_rounds}) 도달 — 가장 나은 초안을 보존합니다.")
+    else:
+        print(f"{log_prefix}최대 라운드({max_rounds}) 도달 — 마지막 결과로 진행")
+    result = {
+        "raw": (best_raw or last_raw) if stop_on_repeated_issues else last_raw,
+        "passed": False,
+        "rounds": len(history),
+        "history": history,
+    }
+    if stop_on_repeated_issues:
+        result["final_issues"] = best_issues
+    return result
