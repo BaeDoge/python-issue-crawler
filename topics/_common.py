@@ -14,6 +14,7 @@
 
 import json
 import re
+from difflib import SequenceMatcher
 from datetime import datetime
 from dataclasses import dataclass, field
 from typing import Callable
@@ -177,6 +178,29 @@ def _pick_candidate_with_context(spec: TopicSpec, candidates: list, chosen: dict
             return cand, ctx
         print(f"[{spec.key}] '{cand['title'][:50]}' 상세 자료를 못 가져와서 다음 후보로 넘어갑니다.")
     return None, None
+
+
+def _normalize_issue(issue: str) -> str:
+    """검수 지적의 표현 차이를 줄여 같은 문제인지 비교한다."""
+    value = (issue or "").casefold()
+    value = re.sub(r"\b(?:현재\s*)?\d+[\d,]*(?:자|개|회|라운드)?\b", " ", value)
+    value = re.sub(r"[^0-9a-z가-힣]+", " ", value)
+    return " ".join(value.split())
+
+
+def _similar_issue_sets(left: list[str], right: list[str]) -> bool:
+    """두 검수 결과의 지적이 대부분 같으면 추가 호출을 생략한다."""
+    left_norm = {_normalize_issue(x) for x in left if _normalize_issue(x)}
+    right_norm = {_normalize_issue(x) for x in right if _normalize_issue(x)}
+    if not left_norm or not right_norm:
+        return False
+    if left_norm == right_norm:
+        return True
+    matched = sum(
+        1 for a in left_norm
+        if any(SequenceMatcher(None, a, b).ratio() >= 0.84 for b in right_norm)
+    )
+    return matched / max(len(left_norm), len(right_norm)) >= 0.8
 
 
 def _quality_issues(result: dict) -> list[str]:
