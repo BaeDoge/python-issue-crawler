@@ -341,7 +341,10 @@ def run_topic(spec: TopicSpec) -> dict:
     images = ctx.get("images", [])
     has_third_party = bool(images) or bool(ctx.get("third_party"))
 
-    writer = build_writer_agent(role=spec.writer_role, goal=spec.writer_goal, backstory=spec.writer_backstory)
+    writer = build_writer_agent(
+        role=spec.writer_role, goal=spec.writer_goal, backstory=spec.writer_backstory,
+        long_form=bool(spec.long_form_guidance),
+    )
     reviewer = build_reviewer_agent(role=spec.reviewer_role, goal=spec.reviewer_goal, checklist=spec.reviewer_checklist)
 
     prompt = _writer_prompt(spec, chosen["title"], context_text)
