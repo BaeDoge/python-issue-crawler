@@ -214,17 +214,51 @@ def fetch_repository_context(candidate: dict) -> dict:
     except RequestException as exc:
         print(f"[GitHub] 저장소 상세 정보 수집 실패: {exc}")
         return {}
-    readme_text = ""
     branch = repo.get("default_branch") or "main"
-    for filename in ("README.md", "README.rst", "README"):
-        url = f"https://raw.githubusercontent.com/{full_name}/{quote(branch, safe='')}/{filename}"
+    tree_paths: list[str] = []
+    file_texts: list[tuple[str, str]] = []
+    try:
+        tree_payload = _request(
+            f"{API_ROOT}/repos/{quote(full_name, safe='/')}/git/trees/{quote(branch, safe='')}?recursive=1"
+        )
+        tree_paths = [
+            entry.get("path", "") for entry in tree_payload.get("tree", [])
+            if entry.get("type") == "blob" and entry.get("path")
+        ][:2500]
+    except (RequestException, ValueError) as exc:
+        print(f"[GitHub] 파일 트리 조회 실패(메타데이터로 계속 진행): {exc}")
+
+    # README만 요약하지 않도록 아키텍처 문서, 보안 문서, 의존성 선언, 구현 파일을 함께 수집합니다.
+    preferred_exact = [
+        "README.md", "README.rst", "README", "SECURITY.md", "CONTRIBUTING.md",
+        "ARCHITECTURE.md", "docs/architecture.md", "package.json", "pyproject.toml",
+        "Cargo.toml", "go.mod", "pom.xml", "build.gradle", "Dockerfile",
+        "LICENSE", "LICENSE.md", "AGENTS.md",
+    ]
+    selected_paths = [p for p in preferred_exact if p in tree_paths]
+    source_candidates = [
+        p for p in tree_paths
+        if any(token in p.lower() for token in (
+            "mcp", "server", "agent", "analy", "reverse", "decompil", "security",
+            "architecture", "plugin", "tool", "parser", "entry"
+        ))
+        and p.lower().endswith((".py", ".ts", ".tsx", ".js", ".mjs", ".go", ".rs", ".java", ".md", ".mdx"))
+        and not any(part in p.lower() for part in ("node_modules/", "vendor/", "dist/", "build/", "lock"))
+    ]
+    for path in source_candidates:
+        if path not in selected_paths:
+            selected_paths.append(path)
+    selected_paths = selected_paths[:9]
+
+    for path in selected_paths:
+        url = f"https://raw.githubusercontent.com/{full_name}/{quote(branch, safe='')}/{quote(path, safe='/')}"
         try:
             response = SESSION.get(url, timeout=20, verify=SSL_VERIFY)
-            if response.status_code == 200:
-                readme_text = response.text[:16000]
-                break
+            if response.status_code == 200 and len(response.text) < 180_000:
+                file_texts.append((path, response.text[:7000]))
         except RequestException:
             continue
+
     license_info = repo.get("license") or {}
     parts = [
         f"프로젝트: {repo.get('full_name', full_name)}",
@@ -236,10 +270,15 @@ def fetch_repository_context(candidate: dict) -> dict:
         f"라이선스 SPDX: {license_info.get('spdx_id') or '미확인'}",
         f"저장소 토픽: {', '.join(repo.get('topics') or []) or '없음'}",
         f"보관(archived) 여부: {repo.get('archived', False)}",
+        f"기본 브랜치: {branch}",
         "",
-        "README (원문 참고 자료; 글에 그대로 복사하지 말 것):",
-        readme_text or "README를 가져오지 못했습니다. 저장소 페이지에서 직접 확인해야 합니다.",
+        "저장소 파일 경로(일부):",
+        "\n".join(f"- {p}" for p in tree_paths[:180]) or "파일 트리를 가져오지 못했습니다.",
+        "",
+        "추가로 수집한 공식 저장소 파일(원문 자료, 그대로 복사하지 말 것):",
     ]
+    for path, text_content in file_texts:
+        parts.extend(["", f"--- FILE: {path} ---", text_content])
     return {
         "context_text": "\n".join(parts),
         "source_url": repo.get("html_url", candidate.get("link")),
@@ -247,7 +286,13 @@ def fetch_repository_context(candidate: dict) -> dict:
             "platform": "GitHub", "title": repo.get("full_name", full_name),
             "url": repo.get("html_url", candidate.get("link")),
             "author": (repo.get("owner") or {}).get("login"),
-        }],
+        }] + [
+            {"platform": "GitHub", "title": f"{repo.get('full_name', full_name)} / {path}",
+             "url": f"https://github.com/{full_name}/blob/{branch}/{path}",
+             "author": (repo.get("owner") or {}).get("login")}
+            for path, _ in file_texts if path not in ("README.md", "README.rst", "README")
+        ],
         "third_party": False,
         "repository": repo,
     }
+
