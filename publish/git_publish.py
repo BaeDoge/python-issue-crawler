@@ -93,7 +93,7 @@ def _publish_to_repo(
             en_content = en_note_path.read_text(encoding="utf-8")
             if image_url_prefix != "/blogs":
                 en_content = en_content.replace("/blogs/", image_url_prefix + "/")
-            en_dest_path.write_text(en_content, encoding="utf-8", newline="\\n")
+            en_dest_path.write_text(en_content, encoding="utf-8", newline="\n")
         elif en_posts_dir:
             print(f"{name}: 영문 MDX가 없어 한국어판만 발행합니다: {en_note_path}")
 
