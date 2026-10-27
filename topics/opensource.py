@@ -52,16 +52,21 @@ def _gather_candidates() -> list:
     payload = discover_github_candidates()
     candidates = []
     seen = set()
-    # Scout가 자동 선택하도록 인기/최근 활동 후보를 합칩니다. 사람이 고르는 프롬프트는 띄우지 않습니다.
-    for item in payload.get("trending", []) + payload.get("popular", []):
-        link = (item.get("link") or "").rstrip("/")
-        if link and link.casefold() not in seen:
-            seen.add(link.casefold())
-            candidates.append(item)
-    if not candidates:
-        return []
-    # 과도한 후보 수로 Scout 컨텍스트가 커지지 않도록 분야별 탐색 결과 상위 후보만 전달합니다.
-    return candidates[:36]
+    # 최근 활동 후보가 목록을 독점하지 않도록 인기/최근 활동 결과를 번갈아 섞습니다.
+    trending = payload.get("trending", [])
+    popular = payload.get("popular", [])
+    for index in range(max(len(trending), len(popular))):
+        for group in (trending, popular):
+            if index >= len(group):
+                continue
+            item = group[index]
+            link = (item.get("link") or "").rstrip("/")
+            if link and link.casefold() not in seen:
+                seen.add(link.casefold())
+                candidates.append(item)
+            if len(candidates) >= 36:
+                return candidates
+    return candidates
 
 
 def _build_context(chosen: dict) -> dict:
