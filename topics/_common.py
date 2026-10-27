@@ -1,0 +1,277 @@
+"""
+주제 실행 공통 로직 (구조화 노트 버전)
+========================================================================
+새 주제를 추가할 때 이 파일을 고칠 필요는 없습니다 — topics/*.py가 TopicSpec을
+채워서 run_topic()에 넘기면 됩니다. 공통으로 처리하는 것:
+
+  1. 후보 수집 -> 이미 다룬 소재(history.json)는 제외
+  2. Scout가 후보 중 하나를 고른다 (후보의 title을 그대로 반환하게 해서 추적)
+  3. 선택된 후보의 상세 자료를 가져온다. 자료가 비어 있으면 다음 후보로 넘어간다
+  4. Writer가 '제목:/요약:' + '## 섹션명' 마크다운 형식으로 작성한다(topics/note_format.py가 파싱)
+  5. refine_loop으로 검증-재작성 반복 (기계적 검사 + LLM 검수)
+  6. output/note.py로 mdx 렌더링, 이력 기록
+"""
+
+import json
+import re
+from datetime import datetime
+from dataclasses import dataclass, field
+from typing import Callable
+
+from crewai import Task, Crew, Process
+
+import history
+import pubqueue
+from config import OUTPUT_DIR, LOG_DIR
+from targets import needs_english
+from crew_builder import build_scout_agent, build_writer_agent, build_reviewer_agent
+from verify.quality import refine_loop, detect_foreign_language_mixing
+from topics.note_format import parse_note_text
+from output.note import render_note, render_note_en, _FENCE_RE
+from topics.translate import translate_note
+
+MAX_CONTEXT_ATTEMPTS = 4   # 상세 자료가 비어 있는 후보를 건너뛰며 시도할 최대 횟수
+
+
+@dataclass
+class TopicSpec:
+    key: str
+    label: str
+    category_prefix: str          # 예: "[트러블슈팅]"
+    tag: str                      # frontmatter tag 값
+    section_names: list
+    gather_candidates: Callable[[], list]
+    scout_criteria: str
+    writer_role: str
+    writer_goal: str
+    writer_backstory: str
+    reviewer_role: str
+    reviewer_goal: str
+    reviewer_checklist: str
+    # 선택된 후보(dict) -> {"context_text": str, "source_url": str|None,
+    #                       "sources": list, "images": list, "third_party": bool}
+    build_context: Callable[[dict], dict]
+    # 영문판용 (포트폴리오의 en 폴더에 같은 구조로 발행) — 섹션 순서는 section_names와 1:1 대응
+    category_prefix_en: str = ""
+    section_names_en: tuple = ()
+    min_section_chars: int = 40
+    max_rounds: int = 5
+    # 이 섹션에는 "실제 코드"가 담긴 ``` 블록이 있어야 통과 (주석만 있는 블록은 불인정)
+    code_required_sections: tuple = ()
+    # 주제별 추가 작성 규칙 (Writer 프롬프트 끝에 붙음)
+    extra_writer_rules: str = ""
+    # {"해결 방법": ("기다려야", ...)} — 해당 섹션에 이 표현이 있으면 재작성
+    forbidden_phrases: dict = field(default_factory=dict)
+
+
+def _strip_think(s: str) -> str:
+    return re.sub(r"<think>.*?</think>", "", s, flags=re.DOTALL).strip()
+
+
+def has_real_code(content: str) -> bool:
+    """코드블록 중 주석/빈 줄이 아닌 줄이 하나라도 있는 블록이 있는가.
+    ('// 코드 수정 불가' 같은 형식만 맞춘 더미 블록을 걸러내기 위함)"""
+    for m in _FENCE_RE.finditer(content or ""):
+        inner = m.group(1)
+        inner = re.sub(r"^[A-Za-z0-9_+#-]+(?=[ \t]|\r?\n)", "", inner, count=1)
+        for line in inner.splitlines():
+            s = line.strip()
+            if s and not s.startswith(("#", "//", "--", "/*", "*")):
+                return True
+    return False
+
+
+def _writer_prompt(spec: TopicSpec, chosen_title: str, context_text: str) -> str:
+    sections_desc = "\n".join(f"- {s}" for s in spec.section_names)
+    return (
+        f"소재: {chosen_title}\n\n"
+        f"--- 참고 자료 ---\n{context_text}\n--- 끝 ---\n\n"
+        f"'{spec.label}' 노트를 작성해라. 블로그처럼 길게 풀어쓰지 말고, 아래 섹션 "
+        f"구조로 정보를 담백하고 명확하게 전달해라(각 섹션 2~6문장, 필요하면 코드 "
+        f"블록 포함):\n{sections_desc}\n\n"
+        "**반드시 지킬 것:**\n"
+        "- 참고 자료에 없는 사실을 지어내지 말 것. 참고 자료의 문장을 그대로 복사하지 말고 "
+        "자기 말로 정리할 것\n"
+        "- 코드블록은 ```언어 로 시작해서 ```로 닫고, 여는/닫는 ``` 모두 반드시 새 줄에 쓸 것"
+        "(문장 중간에 ``` 를 붙여 쓰지 말 것)\n"
+        "- title은 반드시 \"" + spec.category_prefix + " 핵심 키워드\" 형식으로, 15~30자 내외, "
+        "과장되거나 극적인 표현 없이 담백하게\n"
+        "- summary는 1문장, 광고 카피처럼 쓰지 말고 무엇을 다루는지만 명확하게\n"
+        "- 파일명·함수명·키·명령어는 본문에서 `백틱`으로 감쌀 것\n"
+        "- summary에서 원인을 단정하지 말 것 — 참고 자료로 확인되지 않은 원인은 본문에서도 "
+        "'~로 추정됩니다'로 구분할 것\n"
+        + (spec.extra_writer_rules + "\n" if spec.extra_writer_rules else "")
+        + "\n**출력 형식 (이 형식만 사용하고 앞뒤에 다른 설명을 붙이지 말 것):**\n\n"
+        f"제목: {spec.category_prefix} 핵심 키워드\n"
+        "요약: 한 문장\n\n"
+        + "\n\n".join(f"## {s}\n(본문 — 코드는 ```언어 ... ``` 블록으로)" for s in spec.section_names)
+        + "\n\n(섹션 헤더는 위와 똑같이 '## 섹션명'으로 쓰고, 모든 섹션을 빠짐없이 쓸 것)"
+    )
+
+
+def _deterministic_check(spec: TopicSpec):
+    def check(draft_raw: str) -> dict:
+        data = parse_note_text(draft_raw, spec.section_names)
+        if not data:
+            return {"passed": False, "issues": [
+                "형식 파싱 실패 — 첫 줄 '제목: ...', 둘째 줄 '요약: ...' 다음에 '## 섹션명' 헤더로 "
+                "각 섹션을 쓰는 형식을 정확히 지킬 것(설명이나 사과문 없이 이 형식만 출력)"
+            ]}
+        issues = []
+        title = data.get("title", "") or ""
+        if not title.strip():
+            issues.append("title이 비어있음")
+        elif not title.startswith(spec.category_prefix):
+            issues.append(f"title이 '{spec.category_prefix}'로 시작하지 않음 — 형식을 지킬 것")
+
+        if not (data.get("summary", "") or "").strip():
+            issues.append("summary가 비어있음")
+
+        sections = data.get("sections") or {}
+        for name in spec.section_names:
+            content = (sections.get(name) or "").strip()
+            if not content:
+                issues.append(f"'{name}' 섹션이 비어있음")
+                continue
+            if len(content) < spec.min_section_chars:
+                issues.append(f"'{name}' 섹션이 너무 짧음(현재 {len(content)}자, 최소 {spec.min_section_chars}자)")
+            if content.count("```") % 2 == 1:
+                issues.append(f"'{name}' 섹션의 코드블록(```)이 닫히지 않음")
+            if name in spec.code_required_sections and not has_real_code(content):
+                issues.append(f"'{name}' 섹션에 실제 코드/에러 원문이 담긴 ``` 코드블록이 없음 "
+                              "(주석만 있는 블록, 설명만 있는 경우는 인정되지 않음)")
+            for phrase in spec.forbidden_phrases.get(name, ()):
+                if phrase in content:
+                    issues.append(f"'{name}' 섹션에 '{phrase}' 표현이 있음 — 독자가 실제로 따라 할 수 있는 "
+                                  "해결 조치를 써야 함(기다리라거나 불가능하다는 내용은 불합격)")
+
+        all_text = title + " " + json.dumps(sections, ensure_ascii=False)
+        issues += detect_foreign_language_mixing(all_text)
+        return {"passed": not issues, "issues": issues}
+    return check
+
+
+def _pick_candidate_with_context(spec: TopicSpec, candidates: list, chosen: dict):
+    """선택된 후보부터 시작해서, 상세 자료를 못 가져오면 다음 후보로 넘어간다."""
+    order = [chosen] + [c for c in candidates if c is not chosen]
+    for cand in order[:MAX_CONTEXT_ATTEMPTS]:
+        ctx = spec.build_context(cand)
+        if ctx.get("context_text"):
+            return cand, ctx
+        print(f"[{spec.key}] '{cand['title'][:50]}' 상세 자료를 못 가져와서 다음 후보로 넘어갑니다.")
+    return None, None
+
+
+def run_topic(spec: TopicSpec) -> dict:
+    candidates = [c for c in spec.gather_candidates() if not history.is_used(spec.key, c.get("link"))]
+    if not candidates:
+        print(f"⚠️ [{spec.label}] 새로 다룰 후보가 없습니다 (소스 접속 실패이거나 이미 모두 다룬 소재). "
+              "네트워크/소스 설정을 확인하거나, 다시 쓰고 싶은 소재는 output_files/history.json에서 지워주세요.")
+        return {"ok": False, "reason": "no_candidates"}
+
+    scout = build_scout_agent(judging_criteria=spec.scout_criteria)
+    candidates_text = json.dumps(
+        [{"title": c["title"], "signal": c.get("signal"), "source": c.get("source"), "meta": c.get("meta")}
+         for c in candidates],
+        ensure_ascii=False,
+    )
+    scout_task = Task(
+        description=(
+            f"{spec.scout_criteria}\n\n후보 목록(JSON):\n{candidates_text}\n\n"
+            "가장 적합한 후보 하나를 골라, 그 후보의 title 필드 값을 '정확히 그대로' 출력해라. "
+            "다른 설명은 붙이지 말고 title 텍스트만 출력해라."
+        ),
+        expected_output="후보 목록 중 하나의 title 값 그대로",
+        agent=scout,
+    )
+    Crew(agents=[scout], tasks=[scout_task], process=Process.sequential, verbose=True).kickoff()
+    chosen_raw = _strip_think(str(scout_task.output.raw))
+    chosen = next((c for c in candidates if c["title"] in chosen_raw or chosen_raw in c["title"]), candidates[0])
+
+    chosen, ctx = _pick_candidate_with_context(spec, candidates, chosen)
+    if not chosen:
+        print(f"⚠️ [{spec.label}] 어떤 후보도 상세 자료를 가져오지 못했습니다. 소스 접속/스크래핑 설정을 확인해주세요.")
+        return {"ok": False, "reason": "no_context"}
+
+    context_text = ctx["context_text"]
+    sources = ctx.get("sources") or ([{"platform": spec.label, "title": chosen["title"], "url": ctx["source_url"],
+                                       "author": None}] if ctx.get("source_url") else [])
+    images = ctx.get("images", [])
+    has_third_party = bool(images) or bool(ctx.get("third_party"))
+
+    writer = build_writer_agent(role=spec.writer_role, goal=spec.writer_goal, backstory=spec.writer_backstory)
+    reviewer = build_reviewer_agent(role=spec.reviewer_role, goal=spec.reviewer_goal, checklist=spec.reviewer_checklist)
+
+    prompt = _writer_prompt(spec, chosen["title"], context_text)
+    expected = "'제목:'/'요약:' 줄 + '## 섹션명' 헤더로 구성된 마크다운 노트"
+
+    result = refine_loop(
+        writer_agent=writer,
+        critic_agent=reviewer,
+        initial_prompt=prompt,
+        critique_instructions=f"아래 '{spec.label}' 초안을 다음 기준으로 평가해라: {spec.reviewer_checklist}",
+        expected_output=expected,
+        deterministic_check_fn=_deterministic_check(spec),
+        max_rounds=spec.max_rounds,
+        log_prefix=f"[{spec.key}] ",
+    )
+
+    data = parse_note_text(result["raw"], spec.section_names)
+    if not result["passed"]:
+        log_path = LOG_DIR / f"{spec.key}_{datetime.now():%Y%m%d_%H%M%S}.json"
+        log_path.write_text(json.dumps({"chosen": chosen["title"], "history": result["history"],
+                                        "final_raw": result["raw"][:4000]}, ensure_ascii=False, indent=2),
+                            encoding="utf-8")
+        print(f"[{spec.key}] 라운드별 작성 결과/지적 사항을 저장했습니다: {log_path}")
+    if not data or not any(data["sections"].values()):
+        print(f"⚠️ [{spec.label}] Writer가 형식에 맞는 글을 끝내 만들지 못해서 파일을 저장하지 않았습니다 "
+              "(이 소재는 이력에 기록하지 않아 다음에 다시 시도할 수 있습니다). 위 로그 파일을 확인해주세요.")
+        return {"ok": False, "reason": "writer_failed", "chosen": chosen["title"]}
+
+    refine_meta = {
+        "review_passed": result["passed"],
+        "refine_rounds": result["rounds"],
+        "chosen_candidate": chosen["title"],
+        "chosen_link": chosen.get("link"),
+    }
+
+    title = data.get("title") or f"{spec.category_prefix} {chosen['title'][:40]}"
+    rendered = render_note(
+        content_type=spec.key,
+        title=title,
+        summary=data.get("summary", ""),
+        tag=spec.tag,
+        sections=data["sections"],
+        out_dir=OUTPUT_DIR / spec.key,
+        refine_meta=refine_meta,
+        sources=sources,
+        images=images,
+    )
+    history.mark_used(spec.key, chosen.get("link"), chosen["title"])
+
+    # 영문판: 대상 중 en_posts_dir가 있는 곳이 있고, 한국어 글이 검증을 통과했을 때만(GPU 절약)
+    en_path = None
+    if result["passed"] and spec.section_names_en and needs_english():
+        print(f"[{spec.key}] 영문판 번역 시작...")
+        en = translate_note(spec, data | {"title": title})
+        if en:
+            en_path = render_note_en(
+                ko_result=rendered, title=en["title"], summary=en["summary"], tag=spec.tag,
+                sections=en["sections"], section_map=dict(zip(spec.section_names, spec.section_names_en)),
+                out_dir=OUTPUT_DIR / spec.key)["en_path"]
+            print(f"영문판 저장됨: {en_path}")
+        else:
+            print(f"⚠️ [{spec.key}] 영문 번역이 검증을 통과하지 못해 영문판은 건너뜁니다(한국어 글은 정상).")
+    pubqueue.update_meta(rendered["meta_path"], third_party=has_third_party, has_en=bool(en_path),
+                         created_at=datetime.now().isoformat(timespec="seconds"), published=[])
+
+    print(f"\n저장됨: {rendered['path']}")
+    print(f"검토 결과: {result['rounds']}라운드 만에 "
+          f"{'통과' if result['passed'] else '최종 미통과(최선의 결과물로 저장됨 — 수동 검수 권장)'}")
+    if rendered["image_files"]:
+        print(f"이미지 {len(rendered['image_files'])}장 포함 (mdx 옆 public/blogs/ 에 같이 저장됨).")
+    return {
+        "ok": True, "passed": result["passed"], "title": title,
+        "has_images": bool(rendered["image_files"]), "has_third_party": has_third_party,
+        "has_en": bool(en_path), **rendered,
+    }

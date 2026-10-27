@@ -1,0 +1,34 @@
+# targets.toml — 발행 대상 설정 (이 파일을 targets.toml로 복사해서 쓰세요)
+#
+# 레포마다 [targets.이름] 블록을 하나씩 만듭니다. 경로는 로컬에 git clone 해둔 폴더입니다.
+# en_posts_dir를 비워두면 그 대상엔 영문을 발행하지 않습니다. 모든 대상의 en_posts_dir가
+# 비어 있으면 영문 번역 자체를 건너뜁니다(번역에 GPU 시간이 들기 때문).
+
+# 1) 포트폴리오 — 소량, 선별해서. 자동 생성 글이 많이 쌓이면 포트폴리오 신뢰도에 도움이 안 되니
+#    하루 1편 이하로 제한하는 걸 권장합니다.
+[targets.portfolio]
+repo_path = "C:/Users/User/Documents/nextjs-portpolio"
+posts_dir = "src/app/[locale]/blog/posts"
+en_posts_dir = "src/app/[locale]/blog/posts/en"
+branch = "main"
+auto_publish = true
+auto_push = true
+mode = "immediate"
+hold_third_party = true
+daily_limit = 1
+topics = ["algorithm"]          # 포트폴리오엔 알고리즘 풀이만 (트러블슈팅은 공개 블로그로)
+
+# 2) 공개 기술 블로그 — GPU를 계속 돌려서 쌓는 곳. 하루 발행량을 제한하고(daily_limit),
+#    push는 묶어서(batch) 배포 횟수를 줄입니다.
+[targets.techblog]
+repo_path = "C:/Users/User/Documents/tech-notes"
+posts_dir = "src/app/[locale]/blog/posts"
+en_posts_dir = "src/app/[locale]/blog/posts/en"
+branch = "main"
+auto_publish = true
+auto_push = true
+mode = "batch"
+push_interval_minutes = 360     # 6시간마다 한 번에 push
+hold_third_party = true         # 허가 절차가 정리되기 전까지는 true 유지 권장
+daily_limit = 8
+topics = []                     # 비우면 트러블슈팅 + 알고리즘 전부
