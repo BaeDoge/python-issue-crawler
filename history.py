@@ -7,6 +7,7 @@ output_files/history.json에 {topic_key: [{"link","title","at"}]} 형태로 저�
 
 import json
 from datetime import datetime
+from urllib.parse import urlsplit, urlunsplit
 
 from config import OUTPUT_DIR
 
@@ -22,17 +23,42 @@ def _load() -> dict:
         return {}
 
 
-def is_used(topic_key: str, link: str | None) -> bool:
+def _canonical_link(link: str | None) -> str:
+    """Normalize repository URLs so trailing slashes, .git and fragments do not bypass deduplication."""
     if not link:
+        return ""
+    value = str(link).strip()
+    try:
+        parts = urlsplit(value)
+        if parts.scheme and parts.netloc:
+            path = parts.path.rstrip("/")
+            if path.lower().endswith(".git"):
+                path = path[:-4]
+            if parts.netloc.lower() in {"github.com", "www.github.com"}:
+                path = path.lower()
+            return urlunsplit((parts.scheme.lower(), parts.netloc.lower(), path, "", ""))
+    except ValueError:
+        pass
+    return value.rstrip("/").casefold()
+
+
+def is_used(topic_key: str, link: str | None) -> bool:
+    normalized = _canonical_link(link)
+    if not normalized:
         return False
-    return any(item.get("link") == link for item in _load().get(topic_key, []))
+    return any(_canonical_link(item.get("link")) == normalized for item in _load().get(topic_key, []))
 
 
 def mark_used(topic_key: str, link: str | None, title: str) -> None:
     if not link:
         return
     data = _load()
-    data.setdefault(topic_key, []).append({
+    entries = data.setdefault(topic_key, [])
+    normalized = _canonical_link(link)
+    if any(_canonical_link(item.get("link")) == normalized for item in entries):
+        return
+    entries.append({
         "link": link, "title": title, "at": datetime.now().isoformat(timespec="seconds"),
     })
+    HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
     HISTORY_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
