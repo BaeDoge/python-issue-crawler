@@ -182,7 +182,7 @@ def discover_github_candidates(limit: int | None = None) -> dict:
         "errors": errors,
     }
     output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"\\nJSON 저장: {output_path}")
+    print(f"\nJSON 저장: {output_path}")
     print(f"인기 후보 {len(popular_items)}개 / 최근 활동 후보 {len(trending_items)}개")
     if errors:
         print(f"검색 오류 {len(errors)}건. 네트워크/인증서 정책 또는 GitHub API 제한을 확인하세요.")
@@ -191,7 +191,7 @@ def discover_github_candidates(limit: int | None = None) -> dict:
 
 def print_candidates(payload: dict, display_limit: int = 15) -> None:
     for key, heading in (("popular", "인기 프로젝트"), ("trending", "최근 활동 프로젝트")):
-        print("\\n" + "=" * 76 + "\\n" + heading + "\\n" + "=" * 76)
+        print("\n" + "=" * 76 + "\n" + heading + "\n" + "=" * 76)
         items = payload.get(key, [])
         if not items:
             print("후보가 없습니다.")
@@ -200,8 +200,8 @@ def print_candidates(payload: dict, display_limit: int = 15) -> None:
             print(f"{index:>2}. [{item['group']}] {item['title']}")
             print(f"    ⭐ {item['stars']:,} | Fork {item['forks']:,} | 점수 {item['score']}/100")
             print(f"    언어: {item['language']} | 라이선스: {item['license']}")
-            print(f"    {item['description']}\\n    {item['link']}")
-    print("\\n참고: 최근 활동은 별점 증가량과 같지 않습니다. 선택 전 저장소와 라이선스를 확인하세요.")
+            print(f"    {item['description']}\n    {item['link']}")
+    print("\n참고: 최근 활동은 별점 증가량과 같지 않습니다. 선택 전 저장소와 라이선스를 확인하세요.")
 
 
 def fetch_repository_context(candidate: dict) -> dict:
@@ -241,7 +241,7 @@ def fetch_repository_context(candidate: dict) -> dict:
         readme_text or "README를 가져오지 못했습니다. 저장소 페이지에서 직접 확인해야 합니다.",
     ]
     return {
-        "context_text": "\\n".join(parts),
+        "context_text": "\n".join(parts),
         "source_url": repo.get("html_url", candidate.get("link")),
         "sources": [{
             "platform": "GitHub", "title": repo.get("full_name", full_name),
