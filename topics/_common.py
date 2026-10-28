@@ -14,6 +14,7 @@
 
 import json
 import re
+from difflib import SequenceMatcher
 from datetime import datetime
 from dataclasses import dataclass, field
 from typing import Callable
@@ -86,50 +87,47 @@ def has_real_code(content: str) -> bool:
 def _writer_prompt(spec: TopicSpec, chosen_title: str, context_text: str) -> str:
     sections_desc = "\n".join(f"- {s}" for s in spec.section_names)
 
-    # 주제별 작성 방식 분리
     if spec.long_form_guidance:
         mode_instruction = (
             f"'{spec.label}' 장문 분석 블로그를 작성해라. "
-            "짧은 요약이나 README 재진술이 아니라, "
-            "독자가 주제의 배경부터 기술적 의미와 한계까지 "
-            "이해하게 만드는 심층 글이어야 한다.\n"
-            f"반드시 다음 섹션을 모두 충분히 채울 것:\n"
-            f"{sections_desc}\n\n"
+            "짧은 요약이나 README 재진술이 아니라, 실제 프로젝트 자료를 근거로 기술적 배경과 동작을 설명해라.\n"
+            f"반드시 다음 섹션을 모두 작성할 것:\n{sections_desc}\n\n"
             f"{spec.long_form_guidance}\n\n"
+        )
+        evidence_rules = (
+            "- 저장소의 파일 경로만 확인되고 파일 내용은 제공되지 않았다면, 해당 파일의 내부 구현이나 동작을 안다고 주장하지 말 것\n"
+            "- 파일명·함수명·폴더 경로는 참고 자료에 실제로 나온 항목만 언급할 것. 존재 여부가 확인되지 않은 파일명을 만들지 말 것\n"
+            "- 프로젝트 고유 사실, 일반적인 도메인 지식, 작성자의 해석을 구분할 것. 해석은 사실처럼 단정하지 말 것\n"
+            "- 출처는 실제로 읽은 공식 저장소와 파일에만 연결할 것. 라이선스와 최신 수치는 확인된 자료를 우선할 것\n"
+            "- 같은 설명이나 결론을 여러 섹션에서 반복하지 말 것. 분량을 채우기 위한 일반론이나 근거 없는 사회적 효과를 쓰지 말 것\n"
         )
     else:
         mode_instruction = (
-            f"'{spec.label}' 노트를 작성해라. "
-            "아래 섹션 구조로 정보를 담백하고 명확하게 전달해라"
-            "(각 섹션 2~6문장, 필요하면 코드 블록 포함):\n"
-            f"{sections_desc}\n\n"
+            f"'{spec.label}' 노트를 작성해라. 아래 섹션 구조로 정보를 담백하고 명확하게 전달해라"
+            f"(각 섹션 2~6문장, 필요하면 코드 블록 포함):\n{sections_desc}\n\n"
         )
+        evidence_rules = ""
+
+    shared_rules = (
+        "**반드시 지킬 것:**\n"
+        "- 참고 자료에 없는 사실을 지어내지 말 것. 참고 자료의 문장을 그대로 복사하지 말고 자기 말로 정리할 것\n"
+        "- 코드블록은 ```언어 로 시작해서 ```로 닫고, 여는/닫는 ``` 모두 반드시 새 줄에 쓸 것"
+        "(문장 중간에 ```를 붙여 쓰지 말 것)\n"
+        "- title은 반드시 '" + spec.category_prefix + " 핵심 키워드' 형식으로, 15~30자 내외, "
+        "과장되거나 극적인 표현 없이 담백하게 작성할 것\n"
+        "- summary는 1문장으로, 광고 카피처럼 쓰지 말고 무엇을 다루는지만 명확하게 쓸 것\n"
+        "- 파일명·함수명·키·명령어는 본문에서 `백틱`으로 감쌀 것\n"
+        "- summary에서 원인을 단정하지 말 것. 참고 자료로 확인되지 않은 원인은 본문에서도 "
+        "'~로 추정됩니다'로 구분할 것\n"
+    )
 
     return (
         f"소재: {chosen_title}\n\n"
         f"--- 참고 자료 ---\n{context_text}\n--- 끝 ---\n\n"
         + mode_instruction
-        + "**반드시 지킬 것:**\n"
-        "- 참고 자료에 없는 사실을 지어내지 말 것. "
-        "참고 자료의 문장을 그대로 복사하지 말고 자기 말로 정리할 것\n"
-        "- 코드블록은 ```언어 로 시작해서 ```로 닫고, "
-        "여는/닫는 ``` 모두 반드시 새 줄에 쓸 것"
-        "(문장 중간에 ``` 를 붙여 쓰지 말 것)\n"
-        "- title은 반드시 \""
-        + spec.category_prefix
-        + " 핵심 키워드\" 형식으로, 15~30자 내외, "
-        "과장되거나 극적인 표현 없이 담백하게\n"
-        "- summary는 1문장, 광고 카피처럼 쓰지 말고 "
-        "무엇을 다루는지만 명확하게\n"
-        "- 파일명·함수명·키·명령어는 본문에서 `백틱`으로 감쌀 것\n"
-        "- summary에서 원인을 단정하지 말 것. "
-        "참고 자료로 확인되지 않은 원인은 본문에서도 "
-        "'~로 추정됩니다'로 구분할 것\n"
-        + (
-            spec.extra_writer_rules + "\n"
-            if spec.extra_writer_rules
-            else ""
-        )
+        + shared_rules
+        + evidence_rules
+        + (spec.extra_writer_rules + "\n" if spec.extra_writer_rules else "")
         + "\n**출력 형식 (이 형식만 사용하고 앞뒤에 다른 설명을 붙이지 말 것):**\n\n"
         + f"제목: {spec.category_prefix} 핵심 키워드\n"
         + "요약: 한 문장\n\n"
@@ -137,10 +135,8 @@ def _writer_prompt(spec: TopicSpec, chosen_title: str, context_text: str) -> str
             f"## {section}\n(본문 — 코드는 ```언어 ... ``` 블록으로)"
             for section in spec.section_names
         )
-        + "\n\n(섹션 헤더는 위와 똑같이 '## 섹션명'으로 쓰고, "
-        "모든 섹션을 빠짐없이 쓸 것)"
+        + "\n\n(섹션 헤더는 위와 똑같이 '## 섹션명'으로 쓰고, 모든 섹션을 빠짐없이 쓸 것)"
     )
-
 
 def _deterministic_check(spec: TopicSpec):
     def check(draft_raw: str) -> dict:
@@ -201,8 +197,33 @@ def _pick_candidate_with_context(spec: TopicSpec, candidates: list, chosen: dict
     return None, None
 
 
+def _normalize_issue(issue: str) -> str:
+    """검수 지적의 표현 차이를 줄여 같은 문제인지 비교한다."""
+    value = (issue or "").casefold()
+    value = re.sub(r"\b(?:현재\s*)?\d+[\d,]*(?:자|개|회|라운드)?\b", " ", value)
+    value = re.sub(r"[^0-9a-z가-힣]+", " ", value)
+    return " ".join(value.split())
+
+
+def _similar_issue_sets(left: list[str], right: list[str]) -> bool:
+    """두 검수 결과의 지적이 대부분 같으면 추가 호출을 생략한다."""
+    left_norm = {_normalize_issue(x) for x in left if _normalize_issue(x)}
+    right_norm = {_normalize_issue(x) for x in right if _normalize_issue(x)}
+    if not left_norm or not right_norm:
+        return False
+    if left_norm == right_norm:
+        return True
+    matched = sum(
+        1 for a in left_norm
+        if any(SequenceMatcher(None, a, b).ratio() >= 0.84 for b in right_norm)
+    )
+    return matched / max(len(left_norm), len(right_norm)) >= 0.8
+
+
 def _quality_issues(result: dict) -> list[str]:
-    """마지막 검수 라운드의 지적 사항만 추출한다."""
+    """최선의 초안에 대응하는 검수 지적을 추출한다."""
+    if "final_issues" in result:
+        return [str(issue).strip() for issue in (result.get("final_issues") or []) if str(issue).strip()]
     items = result.get("history", []) or []
     if not items:
         return []
@@ -213,9 +234,11 @@ def _quality_issues(result: dict) -> list[str]:
     return [str(issue).strip() for issue in (issues or []) if str(issue).strip()]
 
 def _quality_score(result: dict) -> int:
-    """통과 결과가 최우선이며, 미통과 결과끼리는 마지막 라운드의 지적 수가 적은 것을 선택한다."""
+    """통과 결과가 최우선이며, 미통과 결과는 최선의 초안에 대한 지적 수로 비교한다."""
     if result.get("passed"):
         return -1
+    if "final_issues" in result:
+        return len(result.get("final_issues") or [])
     history_items = result.get("history") or []
     if not history_items:
         return 10_000
@@ -228,17 +251,26 @@ def _quality_score(result: dict) -> int:
 
 def _refine_with_retries(*, writer_agent, critic_agent, initial_prompt: str,
                          critique_instructions: str, expected_output: str,
-                         deterministic_check_fn, max_rounds: int, log_prefix: str) -> dict:
-    """검수 사이클을 반복하고, 통과 결과가 없으면 가장 나은 초안을 보존한다."""
-    attempts = max(1, QUALITY_ATTEMPTS)
+                         deterministic_check_fn, max_rounds: int, log_prefix: str,
+                         stop_on_repeated_issues: bool = False) -> dict:
+    """검수 사이클을 반복하고, 통과 결과가 없으면 가장 나은 초안을 보존한다.
+
+    장문 주제는 같은 검수 지적이 반복될 때 재작성 루프를 조기에 종료해 토큰과 시간을 낭비하지 않는다.
+    짧은 알고리즘/트러블슈팅 주제는 기존 재시도 동작을 유지한다.
+    """
+    configured_attempts = max(1, QUALITY_ATTEMPTS)
+    attempts = min(configured_attempts, 2) if stop_on_repeated_issues else configured_attempts
     best_result = None
     best_score = 10_000
     best_attempt = 1
     all_history = []
     total_rounds = 0
+    completed_attempts = 0
     retry_prompt = initial_prompt
+    previous_attempt_issues: list[str] = []
 
     for attempt in range(1, attempts + 1):
+        completed_attempts = attempt
         print(f"{log_prefix}품질 검수 시도 {attempt}/{attempts} (시도당 최대 {max_rounds}라운드)")
         current = refine_loop(
             writer_agent=writer_agent, critic_agent=critic_agent,
@@ -248,6 +280,7 @@ def _refine_with_retries(*, writer_agent, critic_agent, initial_prompt: str,
             deterministic_check_fn=deterministic_check_fn,
             max_rounds=max_rounds,
             log_prefix=f"{log_prefix}[시도 {attempt}/{attempts}] ",
+            stop_on_repeated_issues=stop_on_repeated_issues,
         )
         total_rounds += int(current.get("rounds", 0))
         all_history.extend({"attempt": attempt, **entry} for entry in current.get("history", []))
@@ -263,23 +296,34 @@ def _refine_with_retries(*, writer_agent, critic_agent, initial_prompt: str,
                     "best_attempt": attempt, "history": all_history}
 
         issues = _quality_issues(current)
+        if stop_on_repeated_issues and previous_attempt_issues and _similar_issue_sets(previous_attempt_issues, issues):
+            print(
+                f"{log_prefix}직전 시도와 검수 지적이 사실상 같아 추가 재시도를 중단합니다. "
+                "최선의 결과물을 보존합니다."
+            )
+            break
+
+        previous_attempt_issues = issues
         if attempt < attempts:
             feedback = "\n".join(f"- {issue}" for issue in issues)
             if not feedback:
-                feedback = "- 이전 초안이 품질 기준을 통과하지 못한 원인을 다시 점검할 것"
+                feedback = "- 이전 초안이 품질 기준을 통과하지 못한 원인을 구체적으로 다시 점검할 것"
             retry_prompt = (
                 f"{initial_prompt}\n\n"
-                f"--- 이전 품질 검수 시도 {attempt}가 최대 {max_rounds}라운드 후에도 미통과 ---\n"
-                "같은 소재를 유지하되 이전 초안을 그대로 반복하지 말고, 아래 지적 사항을 우선 해결해 "
-                "처음부터 완성도 높은 새 초안을 작성할 것. 사실을 새로 지어내지 말고 참고 자료를 근거로 할 것.\n"
+                f"--- 이전 품질 검수 시도 {attempt} 미통과 ---\n"
+                "같은 소재를 유지하되 이전 초안을 그대로 반복하지 말고, 아래 지적을 해결한 새 초안을 작성할 것. "
+                "이미 충족한 항목은 다시 늘리지 말고, 확인되지 않은 사실을 추가하지 말 것.\n"
                 f"{feedback}"
             )
-            print(f"{log_prefix}시도 {attempt} 미통과. 같은 소재로 새 검수 사이클을 시작합니다.")
+            print(f"{log_prefix}시도 {attempt} 미통과. 지적 사항을 반영해 새 검수 사이클을 시작합니다.")
 
     assert best_result is not None
-    print(f"{log_prefix}품질 검수 {attempts}회 시도, 총 {total_rounds}라운드 후에도 미통과. {best_attempt}번째 시도의 결과물을 보존합니다.")
+    print(
+        f"{log_prefix}품질 검수 {completed_attempts}회 시도, 총 {total_rounds}라운드 후에도 미통과. "
+        f"{best_attempt}번째 시도의 결과물을 보존합니다."
+    )
     return {**best_result, "passed": False, "rounds": total_rounds,
-            "attempts": attempts, "best_attempt": best_attempt, "history": all_history}
+            "attempts": completed_attempts, "best_attempt": best_attempt, "history": all_history}
 
 def run_topic(spec: TopicSpec) -> dict:
     candidates = [c for c in spec.gather_candidates() if not history.is_used(spec.key, c.get("link"))]
@@ -318,7 +362,10 @@ def run_topic(spec: TopicSpec) -> dict:
     images = ctx.get("images", [])
     has_third_party = bool(images) or bool(ctx.get("third_party"))
 
-    writer = build_writer_agent(role=spec.writer_role, goal=spec.writer_goal, backstory=spec.writer_backstory)
+    writer = build_writer_agent(
+        role=spec.writer_role, goal=spec.writer_goal, backstory=spec.writer_backstory,
+        long_form=bool(spec.long_form_guidance),
+    )
     reviewer = build_reviewer_agent(role=spec.reviewer_role, goal=spec.reviewer_goal, checklist=spec.reviewer_checklist)
 
     prompt = _writer_prompt(spec, chosen["title"], context_text)
@@ -333,6 +380,7 @@ def run_topic(spec: TopicSpec) -> dict:
         deterministic_check_fn=_deterministic_check(spec),
         max_rounds=spec.max_rounds,
         log_prefix=f"[{spec.key}] ",
+        stop_on_repeated_issues=bool(spec.long_form_guidance),
     )
 
     data = parse_note_text(result["raw"], spec.section_names)
