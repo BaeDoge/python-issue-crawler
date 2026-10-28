@@ -84,9 +84,9 @@ def _sync_branch(repo_path: Path, branch: str) -> None:
             )
         raise PublishError(
             f"{branch}와 {remote_ref}의 자동 rebase에 충돌이 발생해 발행을 중단했습니다."
-            f"{abort_detail}\\n원인: {exc}\\n"
-            "다음 명령으로 양쪽 전용 커밋과 충돌 파일을 확인하세요: "
-            "'git log --oneline --left-right --graph HEAD...{remote_ref}'"
+            f"{abort_detail}\n원인: {exc}\n"
+            f"다음 명령으로 양쪽 전용 커밋과 충돌 파일을 확인하세요: "
+            f"'git log --oneline --left-right --graph HEAD...{remote_ref}'"
         ) from exc
 
 def _safe_relative(value: str | Path) -> Path:
