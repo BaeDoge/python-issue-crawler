@@ -251,7 +251,8 @@ def _quality_score(result: dict) -> int:
 def _refine_with_retries(*, writer_agent, critic_agent, initial_prompt: str,
                          critique_instructions: str, expected_output: str,
                          deterministic_check_fn, max_rounds: int, log_prefix: str,
-                         stop_on_repeated_issues: bool = False) -> dict:
+                         stop_on_repeated_issues: bool = False,
+                         review_context: str = "") -> dict:
     """검수 사이클을 반복하고, 통과 결과가 없으면 가장 나은 초안을 보존한다.
 
     장문 주제는 같은 검수 지적이 반복될 때 재작성 루프를 조기에 종료해 토큰과 시간을 낭비하지 않는다.
@@ -267,6 +268,7 @@ def _refine_with_retries(*, writer_agent, critic_agent, initial_prompt: str,
     completed_attempts = 0
     retry_prompt = initial_prompt
     previous_attempt_issues: list[str] = []
+    review_error_seen = False
 
     for attempt in range(1, attempts + 1):
         completed_attempts = attempt
@@ -280,9 +282,18 @@ def _refine_with_retries(*, writer_agent, critic_agent, initial_prompt: str,
             max_rounds=max_rounds,
             log_prefix=f"{log_prefix}[시도 {attempt}/{attempts}] ",
             stop_on_repeated_issues=stop_on_repeated_issues,
+            review_context=review_context,
         )
         total_rounds += int(current.get("rounds", 0))
         all_history.extend({"attempt": attempt, **entry} for entry in current.get("history", []))
+
+        if current.get("review_error"):
+            review_error_seen = True
+            if best_result is None:
+                best_result = current
+                best_attempt = attempt
+            print(f"{log_prefix}검수기 응답 형식 오류로 새 글 생성을 중단합니다. 기존 최선 초안을 보존합니다.")
+            break
 
         score = _quality_score(current)
         if best_result is None or score <= best_score:
@@ -322,7 +333,8 @@ def _refine_with_retries(*, writer_agent, critic_agent, initial_prompt: str,
         f"{best_attempt}번째 시도의 결과물을 보존합니다."
     )
     return {**best_result, "passed": False, "rounds": total_rounds,
-            "attempts": completed_attempts, "best_attempt": best_attempt, "history": all_history}
+            "attempts": completed_attempts, "best_attempt": best_attempt, "history": all_history,
+            "review_error": review_error_seen or bool(best_result.get("review_error"))}
 
 def run_topic(spec: TopicSpec) -> dict:
     candidates = [c for c in spec.gather_candidates() if not history.is_used(spec.key, c.get("link"))]
@@ -380,6 +392,7 @@ def run_topic(spec: TopicSpec) -> dict:
         max_rounds=spec.max_rounds,
         log_prefix=f"[{spec.key}] ",
         stop_on_repeated_issues=bool(spec.long_form_guidance),
+        review_context=(ctx.get("review_context", "") if spec.long_form_guidance else ""),
     )
 
     data = parse_note_text(result["raw"], spec.section_names)
