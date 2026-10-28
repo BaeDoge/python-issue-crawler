@@ -21,27 +21,104 @@ _FOREIGN_CJK_RE = re.compile(
 )
 
 
-def extract_json(raw: str) -> dict | None:
-    """모델이 JSON 앞뒤에 설명을 붙이거나 코드펜스로 감싸는 경우가 많아, 가장 큰
-    {...} 블록만 추출해서 파싱한다."""
-    # 추론 모델(<think>...</think>)이 JSON 앞에 생각 과정을 붙이는 경우 제거
-    text = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```[a-zA-Z]*\n?", "", text)
-        text = re.sub(r"\n?```$", "", text)
-    m = _JSON_BLOCK_RE.search(text)
-    if not m:
-        return None
-    try:
-        return json.loads(m.group(0))
-    except json.JSONDecodeError:
-        # 가장 흔한 실패 원인: 이스케이프 안 된 큰따옴표. 단순 보정 시도 후 재파싱.
-        fixed = m.group(0)
-        try:
-            return json.loads(fixed)
-        except json.JSONDecodeError:
-            return None
+def _repair_unescaped_json_quotes(candidate: str) -> str:
+    """JSON 문자열 내부의 미이스케이프 큰따옴표를 제한적으로 보정한다."""
+    output: list[str] = []
+    stack: list[str] = []
+    in_string = False
+    string_is_key = False
+    i = 0
+    while i < len(candidate):
+        ch = candidate[i]
+        if not in_string:
+            if ch == '"':
+                previous = next((value for value in reversed(output) if not value.isspace()), "")
+                string_is_key = bool(stack and stack[-1] == "{" and previous in {"{", ","})
+                in_string = True
+            elif ch in "{[":
+                stack.append(ch)
+            elif ch in "}]":
+                expected = "{" if ch == "}" else "["
+                if stack and stack[-1] == expected:
+                    stack.pop()
+            output.append(ch)
+            i += 1
+            continue
+        if ch == "\\":
+            output.append(ch)
+            if i + 1 < len(candidate):
+                output.append(candidate[i + 1])
+                i += 2
+            else:
+                i += 1
+            continue
+        if ch == '"':
+            j = i + 1
+            while j < len(candidate) and candidate[j].isspace():
+                j += 1
+            nxt = candidate[j] if j < len(candidate) else ""
+            after_comma = candidate[j + 1:].lstrip() if nxt == "," else ""
+            closes = (
+                not nxt
+                or nxt in "]}"
+                or (nxt == "," and (after_comma.startswith('"') or not after_comma))
+                or (nxt == ":" and string_is_key)
+            )
+            if closes:
+                in_string = False
+                string_is_key = False
+                output.append(ch)
+            else:
+                output.append('\\"')
+            i += 1
+            continue
+        output.append(ch)
+        i += 1
+    return "".join(output)
 
+
+def _is_review_verdict(value: object) -> bool:
+    return (
+        isinstance(value, dict)
+        and isinstance(value.get("passed"), bool)
+        and isinstance(value.get("issues"), list)
+        and all(isinstance(item, str) for item in value.get("issues", []))
+    )
+
+
+def extract_json(raw: str) -> dict | None:
+    """LLM 응답에서 유효한 검수 JSON을 찾는다. 설명 텍스트와 추론 태그를 허용한다."""
+    text = re.sub(r"<think>.*?</think>", "", raw or "", flags=re.DOTALL).strip()
+    if not text:
+        return None
+
+    fence = chr(96) * 3
+    if text.startswith(fence):
+        text = re.sub(r"^" + re.escape(fence) + r"[a-zA-Z0-9_-]*\s*", "", text)
+        text = re.sub(r"\s*" + re.escape(fence) + r"$", "", text)
+
+    decoder = json.JSONDecoder()
+    starts = [index for index, char in enumerate(text) if char == "{"]
+
+    # 우선 원본 응답 그대로 파싱한다.
+    for position in starts:
+        try:
+            value, _ = decoder.raw_decode(text[position:])
+        except json.JSONDecodeError:
+            continue
+        if _is_review_verdict(value):
+            return {"passed": value["passed"], "issues": value["issues"]}
+
+    # 리뷰 문장에 포함된 따옴표 때문에 JSON이 깨졌을 때만 제한적으로 보정한다.
+    for position in starts:
+        repaired = _repair_unescaped_json_quotes(text[position:])
+        try:
+            value, _ = decoder.raw_decode(repaired)
+        except json.JSONDecodeError:
+            continue
+        if _is_review_verdict(value):
+            return {"passed": value["passed"], "issues": value["issues"]}
+    return None
 
 def detect_foreign_language_mixing(text: str) -> list[str]:
     if _FOREIGN_CJK_RE.search(text or ""):
