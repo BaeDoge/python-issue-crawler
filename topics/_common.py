@@ -25,6 +25,7 @@ import history
 from config import OUTPUT_DIR, LOG_DIR, QUALITY_ATTEMPTS, PUBLISH_TARGETS
 from crew_builder import build_scout_agent, build_writer_agent, build_reviewer_agent
 from verify.quality import refine_loop, detect_foreign_language_mixing
+from verify.repository_paths import find_unverified_repository_paths as _find_unverified_repository_paths
 from topics.note_format import parse_note_text
 from output.note import render_note, render_note_en, _FENCE_RE
 from topics.translate import translate_note
@@ -137,7 +138,7 @@ def _writer_prompt(spec: TopicSpec, chosen_title: str, context_text: str) -> str
         + "\n\n(섹션 헤더는 위와 똑같이 '## 섹션명'으로 쓰고, 모든 섹션을 빠짐없이 쓸 것)"
     )
 
-def _deterministic_check(spec: TopicSpec):
+def _deterministic_check(spec: TopicSpec, repository_paths: list[str] | None = None):
     def check(draft_raw: str) -> dict:
         data = parse_note_text(draft_raw, spec.section_names)
         if not data:
@@ -180,6 +181,20 @@ def _deterministic_check(spec: TopicSpec):
                 f"본문이 장문 기준보다 짧음(현재 {body_chars}자, 최소 {spec.min_total_chars}자). "
                 "배경·기술적 동작 원리·구체적인 활용 사례·한계와 위험을 근거 중심으로 확장할 것"
             )
+        if repository_paths:
+            all_body_text = "\n".join(
+                [title, data.get("summary", "") or ""]
+                + [(sections.get(name) or "") for name in spec.section_names]
+            )
+            unverified_paths = _find_unverified_repository_paths(all_body_text, repository_paths)
+            if unverified_paths:
+                preview = ", ".join(f"`{path}`" for path in unverified_paths[:5])
+                remainder = f" 외 {len(unverified_paths) - 5}개" if len(unverified_paths) > 5 else ""
+                issues.append(
+                    f"저장소 경로가 실제 Git 트리에서 확인되지 않음: {preview}{remainder}. "
+                    "경로를 실제 파일 목록에 맞춰 수정하거나, 확인되지 않는 경로 언급을 삭제할 것"
+                )
+
         issues += detect_foreign_language_mixing(all_text)
         return {"passed": not issues, "issues": issues}
     return check
@@ -251,7 +266,8 @@ def _quality_score(result: dict) -> int:
 def _refine_with_retries(*, writer_agent, critic_agent, initial_prompt: str,
                          critique_instructions: str, expected_output: str,
                          deterministic_check_fn, max_rounds: int, log_prefix: str,
-                         stop_on_repeated_issues: bool = False) -> dict:
+                         stop_on_repeated_issues: bool = False,
+                         review_context: str = "") -> dict:
     """검수 사이클을 반복하고, 통과 결과가 없으면 가장 나은 초안을 보존한다.
 
     장문 주제는 같은 검수 지적이 반복될 때 재작성 루프를 조기에 종료해 토큰과 시간을 낭비하지 않는다.
@@ -267,6 +283,7 @@ def _refine_with_retries(*, writer_agent, critic_agent, initial_prompt: str,
     completed_attempts = 0
     retry_prompt = initial_prompt
     previous_attempt_issues: list[str] = []
+    review_error_seen = False
 
     for attempt in range(1, attempts + 1):
         completed_attempts = attempt
@@ -280,9 +297,18 @@ def _refine_with_retries(*, writer_agent, critic_agent, initial_prompt: str,
             max_rounds=max_rounds,
             log_prefix=f"{log_prefix}[시도 {attempt}/{attempts}] ",
             stop_on_repeated_issues=stop_on_repeated_issues,
+            review_context=review_context,
         )
         total_rounds += int(current.get("rounds", 0))
         all_history.extend({"attempt": attempt, **entry} for entry in current.get("history", []))
+
+        if current.get("review_error"):
+            review_error_seen = True
+            if best_result is None:
+                best_result = current
+                best_attempt = attempt
+            print(f"{log_prefix}검수기 응답 형식 오류로 새 글 생성을 중단합니다. 기존 최선 초안을 보존합니다.")
+            break
 
         score = _quality_score(current)
         if best_result is None or score <= best_score:
@@ -322,7 +348,8 @@ def _refine_with_retries(*, writer_agent, critic_agent, initial_prompt: str,
         f"{best_attempt}번째 시도의 결과물을 보존합니다."
     )
     return {**best_result, "passed": False, "rounds": total_rounds,
-            "attempts": completed_attempts, "best_attempt": best_attempt, "history": all_history}
+            "attempts": completed_attempts, "best_attempt": best_attempt, "history": all_history,
+            "review_error": review_error_seen or bool(best_result.get("review_error"))}
 
 def run_topic(spec: TopicSpec) -> dict:
     candidates = [c for c in spec.gather_candidates() if not history.is_used(spec.key, c.get("link"))]
@@ -376,10 +403,11 @@ def run_topic(spec: TopicSpec) -> dict:
         initial_prompt=prompt,
         critique_instructions=f"아래 '{spec.label}' 초안을 다음 기준으로 평가해라: {spec.reviewer_checklist}",
         expected_output=expected,
-        deterministic_check_fn=_deterministic_check(spec),
+        deterministic_check_fn=_deterministic_check(spec, ctx.get("tree_paths")),
         max_rounds=spec.max_rounds,
         log_prefix=f"[{spec.key}] ",
         stop_on_repeated_issues=bool(spec.long_form_guidance),
+        review_context=(ctx.get("review_context", "") if spec.long_form_guidance else ""),
     )
 
     data = parse_note_text(result["raw"], spec.section_names)
