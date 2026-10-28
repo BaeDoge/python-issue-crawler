@@ -447,6 +447,7 @@ def fetch_repository_context(candidate: dict) -> dict:
     return {
         "context_text": "\n".join(parts),
         "review_context": "\n".join(review_parts),
+        "tree_paths": tree_paths,
         "source_url": repo.get("html_url", candidate.get("link")),
         "sources": [{
             "platform": "GitHub", "title": repo.get("full_name", full_name),
