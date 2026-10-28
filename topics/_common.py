@@ -25,6 +25,7 @@ import history
 from config import OUTPUT_DIR, LOG_DIR, QUALITY_ATTEMPTS, PUBLISH_TARGETS
 from crew_builder import build_scout_agent, build_writer_agent, build_reviewer_agent
 from verify.quality import refine_loop, detect_foreign_language_mixing
+from verify.repository_paths import find_unverified_repository_paths as _find_unverified_repository_paths
 from topics.note_format import parse_note_text
 from output.note import render_note, render_note_en, _FENCE_RE
 from topics.translate import translate_note
@@ -136,34 +137,6 @@ def _writer_prompt(spec: TopicSpec, chosen_title: str, context_text: str) -> str
         )
         + "\n\n(섹션 헤더는 위와 똑같이 '## 섹션명'으로 쓰고, 모든 섹션을 빠짐없이 쓸 것)"
     )
-
-_REPO_PATH_MENTION_RE = re.compile(
-    r"(?<![A-Za-z0-9_.-])((?:ch\d{2,}|appendix-[A-Z]|setup|pkg|\.github)(?:/[A-Za-z0-9_.+@-]+)+)"
-)
-
-
-def _find_unverified_repository_paths(text: str, repository_paths: list[str] | None) -> list[str]:
-    """본문에서 언급한 저장소 내부 경로 중 실제 Git tree에서 확인되지 않은 경로를 찾는다."""
-    if not repository_paths:
-        return []
-
-    known_paths: set[str] = set()
-    for path in repository_paths:
-        normalized = path.strip().strip("/")
-        if not normalized:
-            continue
-        known_paths.add(normalized)
-        parts = normalized.split("/")
-        for depth in range(1, len(parts)):
-            known_paths.add("/".join(parts[:depth]))
-
-    missing = set()
-    for match in _REPO_PATH_MENTION_RE.finditer(text or ""):
-        path = match.group(1).rstrip(".,:;!?")
-        if path and path not in known_paths:
-            missing.add(path)
-    return sorted(missing)
-
 
 def _deterministic_check(spec: TopicSpec, repository_paths: list[str] | None = None):
     def check(draft_raw: str) -> dict:
