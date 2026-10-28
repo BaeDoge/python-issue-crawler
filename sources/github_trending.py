@@ -230,12 +230,13 @@ def fetch_repository_context(candidate: dict) -> dict:
 
     # README뿐 아니라 라이선스/설계 문서, 대표 예제 문서, 실제 구현 파일을 별도로 고릅니다.
     preferred_exact = [
-        "README.md", "README.rst", "README", "SECURITY.md", "CONTRIBUTING.md",
+        "README.md", "README.rst", "README",
         "LICENSE.txt", "LICENSE", "LICENSE.md", "COPYING", "COPYING.md",
-        "ARCHITECTURE.md", "docs/architecture.md", "pyproject.toml", "package.json",
-        "Cargo.toml", "go.mod", "pom.xml", "build.gradle", "Dockerfile",
+        "pyproject.toml", "package.json", "Cargo.toml", "go.mod", "pom.xml",
+        "build.gradle", "Dockerfile", "SECURITY.md", "CONTRIBUTING.md",
+        "ARCHITECTURE.md", "docs/architecture.md",
     ]
-    selected_paths = [p for p in preferred_exact if p in tree_paths][:6]
+    selected_paths = [p for p in preferred_exact if p in tree_paths][:5]
 
     code_extensions = (".py", ".ts", ".tsx", ".js", ".mjs", ".go", ".rs", ".java", ".c", ".cc", ".cpp", ".h")
     ignored_parts = (
@@ -256,9 +257,10 @@ def fetch_repository_context(candidate: dict) -> dict:
             score += 45
         if any(word in lower for word in (
             "main.", "core.", "engine.", "client.", "server.", "parser.", "agent.",
-            "api.", "service.", "database.", "cache.", "pipeline.",
+            "api.", "service.", "database.", "cache.", "pipeline.", "gpt", "llm",
+            "tokenizer", "attention", "transformer", "train", "generate", "inference",
         )):
-            score += 20
+            score += 25
         if any(word in lower for word in ("test_", "_test.", ".spec.", ".test.")):
             score -= 35
         if name in {"__init__.py", "index.js", "index.ts", "index.tsx"}:
@@ -281,7 +283,7 @@ def fetch_repository_context(candidate: dict) -> dict:
             continue
         selected_paths.append(path)
         chosen_code_dirs.add(parent)
-        if len(chosen_code_dirs) >= 2:
+        if len(chosen_code_dirs) >= 3:
             break
 
     # 튜토리얼/설계 가이드가 핵심인 저장소도 있으므로, 대표 예제 문서를 최대 2개 보충합니다.
@@ -289,16 +291,37 @@ def fetch_repository_context(candidate: dict) -> dict:
         p for p in tree_paths
         if p.lower().endswith((".md", ".mdx", ".rst"))
         and p not in selected_paths
-        and any(marker in p.lower() for marker in (
-            "/solutions/", "/examples/", "/example/", "/docs/",
-        ))
+        and (
+            any(marker in p.lower() for marker in (
+                "/solutions/", "/examples/", "/example/", "/docs/",
+            ))
+            or (
+                p.lower().endswith("/readme.md")
+                and p.split("/", 1)[0].startswith(("ch", "appendix-", "setup"))
+            )
+        )
         and not any(token in p.lower() for token in (
             "readme-ja", "readme-zh", "readme-ko", "readme-zh-tw", "translation",
             "changelog", "release-notes",
         ))
         and len(p) < 180
     ]
-    example_docs.sort(key=lambda p: (0 if "readme.md" in p.lower() else 1, len(p), p.lower()))
+    def _example_doc_priority(path: str) -> tuple[int, int, str]:
+        parent = path.rsplit("/", 1)[0] if "/" in path else ""
+        first_dir = path.split("/", 1)[0]
+        if parent in chosen_code_dirs:
+            rank = 0
+        elif first_dir == "ch04":
+            rank = 1
+        elif first_dir.startswith("appendix-"):
+            rank = 2
+        elif first_dir.startswith("ch"):
+            rank = 3
+        else:
+            rank = 4
+        return (rank, len(path), path.lower())
+
+    example_docs.sort(key=_example_doc_priority)
     chosen_doc_dirs = set()
     for path in example_docs:
         parent = path.rsplit("/", 1)[0] if "/" in path else ""
@@ -341,8 +364,90 @@ def fetch_repository_context(candidate: dict) -> dict:
     ]
     for path, text_content in file_texts:
         parts.extend(["", f"--- FILE: {path} ---", text_content])
+    # Reviewer에게도 원문 근거를 전달해야 추측성 지적을 줄일 수 있습니다.
+    # 파일 경로 목록은 존재 여부만 나타내며, 실제 파일 내용과 구분해 제공합니다.
+    top_level_names = sorted({path.split("/", 1)[0] for path in tree_paths if path})
+    review_parts = [
+        f"저장소: {repo.get('full_name', full_name)}",
+        f"공식 URL: {repo.get('html_url', candidate.get('link', ''))}",
+        f"기본 브랜치: {branch}",
+        f"생성일: {repo.get('created_at', '미확인')} / 최근 push: {repo.get('pushed_at', '미확인')}",
+        f"GitHub 라이선스 메타데이터(SPDX; 원문 LICENSE와 별개): {license_info.get('spdx_id') or '미확인'}",
+        "최상위 파일/디렉터리 이름(트리에서 추출):",
+        "\n".join(f"- {name}" for name in top_level_names[:80]) or "파일 트리를 가져오지 못했습니다.",
+        "",
+        "실제로 다운로드한 공식 파일 경로:",
+        "\n".join(f"- {path}" for path, _ in file_texts),
+        "",
+        "실제로 다운로드한 공식 파일 원문 발췌:",
+    ]
+    review_budget = 16_000 - sum(len(part) for part in review_parts)
+
+    code_extensions_for_review = (".py", ".ts", ".tsx", ".js", ".mjs", ".go", ".rs", ".java", ".c", ".cc", ".cpp", ".h")
+
+    def _review_file_priority(path: str) -> tuple[int, int, str]:
+        lower = path.lower()
+        name = lower.rsplit("/", 1)[-1]
+        is_root = "/" not in path
+        if is_root and name in {"readme.md", "readme.rst", "readme"}:
+            rank = 0
+        elif lower.endswith(code_extensions_for_review):
+            rank = 1
+        elif "license" in name or name.startswith("copying"):
+            rank = 2
+        elif name in {"pyproject.toml", "package.json", "cargo.toml", "go.mod", "pom.xml", "build.gradle"}:
+            rank = 3
+        elif name == "readme.md":
+            rank = 4
+        else:
+            rank = 5
+        return (rank, len(path), path.lower())
+
+    def _review_excerpt_limit(path: str) -> int:
+        lower = path.lower()
+        name = lower.rsplit("/", 1)[-1]
+        if "/" not in path and name in {"readme.md", "readme.rst", "readme"}:
+            return 2_000
+        if lower.endswith(code_extensions_for_review):
+            return 2_400
+        if "license" in name or name.startswith("copying"):
+            return 2_200
+        if name in {"pyproject.toml", "package.json", "cargo.toml", "go.mod", "pom.xml", "build.gradle"}:
+            return 2_000
+        if name == "readme.md":
+            return 1_300
+        return 1_100
+
+    code_excerpt_count = 0
+    document_excerpt_count = 0
+    for path, text_content in sorted(file_texts, key=lambda item: _review_file_priority(item[0])):
+        lower = path.lower()
+        name = lower.rsplit("/", 1)[-1]
+        is_code = lower.endswith(code_extensions_for_review)
+        is_nested_readme = name == "readme.md" and "/" in path
+
+        # 한 종류의 자료만 컨텍스트를 차지하지 않도록, 리뷰용 코드와 하위 문서는 각각 2개까지만 포함합니다.
+        if is_code and code_excerpt_count >= 2:
+            continue
+        if is_nested_readme and document_excerpt_count >= 2:
+            continue
+        if review_budget <= 500:
+            break
+        allowance = min(_review_excerpt_limit(path), review_budget)
+        if allowance < 400:
+            break
+        snippet = text_content[:allowance]
+        review_parts.extend(["", f"--- {path} (원문 발췌) ---", snippet])
+        review_budget -= len(path) + len(snippet) + 20
+        if is_code:
+            code_excerpt_count += 1
+        if is_nested_readme:
+            document_excerpt_count += 1
+
     return {
         "context_text": "\n".join(parts),
+        "review_context": "\n".join(review_parts),
+        "tree_paths": tree_paths,
         "source_url": repo.get("html_url", candidate.get("link")),
         "sources": [{
             "platform": "GitHub", "title": repo.get("full_name", full_name),
