@@ -7,7 +7,6 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
-from unittest import mock
 
 # Importing the publisher loads shared LLM config. No LLM calls are made by these tests.
 os.environ.setdefault("OMNIROUTE_API_KEY", "unit-test-only")
