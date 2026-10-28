@@ -137,7 +137,35 @@ def _writer_prompt(spec: TopicSpec, chosen_title: str, context_text: str) -> str
         + "\n\n(섹션 헤더는 위와 똑같이 '## 섹션명'으로 쓰고, 모든 섹션을 빠짐없이 쓸 것)"
     )
 
-def _deterministic_check(spec: TopicSpec):
+_REPO_PATH_MENTION_RE = re.compile(
+    r"(?<![A-Za-z0-9_.-])((?:ch\d{2,}|appendix-[A-Z]|setup|pkg|\.github)(?:/[A-Za-z0-9_.+@-]+)+)"
+)
+
+
+def _find_unverified_repository_paths(text: str, repository_paths: list[str] | None) -> list[str]:
+    """본문에서 언급한 저장소 내부 경로 중 실제 Git tree에서 확인되지 않은 경로를 찾는다."""
+    if not repository_paths:
+        return []
+
+    known_paths: set[str] = set()
+    for path in repository_paths:
+        normalized = path.strip().strip("/")
+        if not normalized:
+            continue
+        known_paths.add(normalized)
+        parts = normalized.split("/")
+        for depth in range(1, len(parts)):
+            known_paths.add("/".join(parts[:depth]))
+
+    missing = set()
+    for match in _REPO_PATH_MENTION_RE.finditer(text or ""):
+        path = match.group(1).rstrip(".,:;!?")
+        if path and path not in known_paths:
+            missing.add(path)
+    return sorted(missing)
+
+
+def _deterministic_check(spec: TopicSpec, repository_paths: list[str] | None = None):
     def check(draft_raw: str) -> dict:
         data = parse_note_text(draft_raw, spec.section_names)
         if not data:
@@ -180,6 +208,20 @@ def _deterministic_check(spec: TopicSpec):
                 f"본문이 장문 기준보다 짧음(현재 {body_chars}자, 최소 {spec.min_total_chars}자). "
                 "배경·기술적 동작 원리·구체적인 활용 사례·한계와 위험을 근거 중심으로 확장할 것"
             )
+        if repository_paths:
+            all_body_text = "\n".join(
+                [title, data.get("summary", "") or ""]
+                + [(sections.get(name) or "") for name in spec.section_names]
+            )
+            unverified_paths = _find_unverified_repository_paths(all_body_text, repository_paths)
+            if unverified_paths:
+                preview = ", ".join(f"`{path}`" for path in unverified_paths[:5])
+                remainder = f" 외 {len(unverified_paths) - 5}개" if len(unverified_paths) > 5 else ""
+                issues.append(
+                    f"저장소 경로가 실제 Git 트리에서 확인되지 않음: {preview}{remainder}. "
+                    "경로를 실제 파일 목록에 맞춰 수정하거나, 확인되지 않는 경로 언급을 삭제할 것"
+                )
+
         issues += detect_foreign_language_mixing(all_text)
         return {"passed": not issues, "issues": issues}
     return check
@@ -388,7 +430,7 @@ def run_topic(spec: TopicSpec) -> dict:
         initial_prompt=prompt,
         critique_instructions=f"아래 '{spec.label}' 초안을 다음 기준으로 평가해라: {spec.reviewer_checklist}",
         expected_output=expected,
-        deterministic_check_fn=_deterministic_check(spec),
+        deterministic_check_fn=_deterministic_check(spec, ctx.get("tree_paths")),
         max_rounds=spec.max_rounds,
         log_prefix=f"[{spec.key}] ",
         stop_on_repeated_issues=bool(spec.long_form_guidance),
