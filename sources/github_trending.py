@@ -230,12 +230,13 @@ def fetch_repository_context(candidate: dict) -> dict:
 
     # README뿐 아니라 라이선스/설계 문서, 대표 예제 문서, 실제 구현 파일을 별도로 고릅니다.
     preferred_exact = [
-        "README.md", "README.rst", "README", "SECURITY.md", "CONTRIBUTING.md",
+        "README.md", "README.rst", "README",
         "LICENSE.txt", "LICENSE", "LICENSE.md", "COPYING", "COPYING.md",
-        "ARCHITECTURE.md", "docs/architecture.md", "pyproject.toml", "package.json",
-        "Cargo.toml", "go.mod", "pom.xml", "build.gradle", "Dockerfile",
+        "pyproject.toml", "package.json", "Cargo.toml", "go.mod", "pom.xml",
+        "build.gradle", "Dockerfile", "SECURITY.md", "CONTRIBUTING.md",
+        "ARCHITECTURE.md", "docs/architecture.md",
     ]
-    selected_paths = [p for p in preferred_exact if p in tree_paths][:6]
+    selected_paths = [p for p in preferred_exact if p in tree_paths][:5]
 
     code_extensions = (".py", ".ts", ".tsx", ".js", ".mjs", ".go", ".rs", ".java", ".c", ".cc", ".cpp", ".h")
     ignored_parts = (
@@ -256,9 +257,10 @@ def fetch_repository_context(candidate: dict) -> dict:
             score += 45
         if any(word in lower for word in (
             "main.", "core.", "engine.", "client.", "server.", "parser.", "agent.",
-            "api.", "service.", "database.", "cache.", "pipeline.",
+            "api.", "service.", "database.", "cache.", "pipeline.", "gpt", "llm",
+            "tokenizer", "attention", "transformer", "train", "generate", "inference",
         )):
-            score += 20
+            score += 25
         if any(word in lower for word in ("test_", "_test.", ".spec.", ".test.")):
             score -= 35
         if name in {"__init__.py", "index.js", "index.ts", "index.tsx"}:
@@ -281,7 +283,7 @@ def fetch_repository_context(candidate: dict) -> dict:
             continue
         selected_paths.append(path)
         chosen_code_dirs.add(parent)
-        if len(chosen_code_dirs) >= 2:
+        if len(chosen_code_dirs) >= 3:
             break
 
     # 튜토리얼/설계 가이드가 핵심인 저장소도 있으므로, 대표 예제 문서를 최대 2개 보충합니다.
@@ -341,8 +343,50 @@ def fetch_repository_context(candidate: dict) -> dict:
     ]
     for path, text_content in file_texts:
         parts.extend(["", f"--- FILE: {path} ---", text_content])
+    # Reviewer에게도 원문 근거를 전달해야 추측성 지적을 줄일 수 있습니다.
+    # 파일 경로 목록은 존재 여부만 나타내며, 실제 파일 내용과 구분해 제공합니다.
+    review_parts = [
+        f"저장소: {repo.get('full_name', full_name)}",
+        f"공식 URL: {repo.get('html_url', candidate.get('link', ''))}",
+        f"기본 브랜치: {branch}",
+        f"생성일: {repo.get('created_at', '미확인')} / 최근 push: {repo.get('pushed_at', '미확인')}",
+        f"GitHub 라이선스 메타데이터(SPDX; 원문 라이선스와 별개): {license_info.get('spdx_id') or '미확인'}",
+        "파일 경로 목록(존재 여부를 확인할 때만 사용; 내부 구현의 증거는 아님):",
+        "\n".join(tree_paths[:100]) or "파일 트리를 가져오지 못했습니다.",
+        "",
+        "실제로 다운로드한 파일 원문(각 구간에 경로 표시):",
+    ]
+    review_used = sum(len(part) for part in review_parts)
+    review_budget = 14_000 - review_used
+
+    def _review_file_priority(path: str) -> tuple[int, int, str]:
+        lower = path.lower()
+        name = lower.rsplit("/", 1)[-1]
+        if name in {"readme.md", "readme.rst", "readme"} and "/" not in path:
+            rank = 0
+        elif "license" in name or name.startswith("copying"):
+            rank = 1
+        elif name in {"pyproject.toml", "package.json", "cargo.toml", "go.mod", "pom.xml", "build.gradle"}:
+            rank = 2
+        elif lower.endswith((".py", ".ts", ".tsx", ".js", ".mjs", ".go", ".rs", ".java", ".c", ".cc", ".cpp", ".h")):
+            rank = 3
+        elif name == "readme.md":
+            rank = 4
+        else:
+            rank = 5
+        return (rank, len(path), path.lower())
+
+    for path, text_content in sorted(file_texts, key=lambda item: _review_file_priority(item[0])):
+        if review_budget <= 600:
+            break
+        allowance = min(2_600, review_budget)
+        snippet = text_content[:allowance]
+        review_parts.extend(["", f"--- {path} (원문 발췌) ---", snippet])
+        review_budget -= len(path) + len(snippet) + 20
+
     return {
         "context_text": "\n".join(parts),
+        "review_context": "\n".join(review_parts),
         "source_url": repo.get("html_url", candidate.get("link")),
         "sources": [{
             "platform": "GitHub", "title": repo.get("full_name", full_name),
