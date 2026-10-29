@@ -209,9 +209,18 @@ def _pick_candidate_with_context(spec: TopicSpec, candidates: list, chosen: dict
     order = [chosen] + [c for c in candidates if c is not chosen]
     for cand in order[:MAX_CONTEXT_ATTEMPTS]:
         ctx = spec.build_context(cand)
-        if ctx.get("context_text"):
+        has_context = bool(ctx.get("context_text"))
+        has_source_evidence = (
+            not spec.long_form_guidance
+            or int(ctx.get("analysis_source_count", 0)) >= 1
+        )
+        if has_context and has_source_evidence:
             return cand, ctx
-        print(f"[{spec.key}] '{cand['title'][:50]}' 상세 자료를 못 가져와서 다음 후보로 넘어갑니다.")
+        if has_context and spec.long_form_guidance and not has_source_evidence:
+            reason = "실제 파일 원문을 가져오지 못함"
+        else:
+            reason = "상세 자료를 가져오지 못함"
+        print(f"[{spec.key}] '{cand['title'][:50]}' {reason}. 다음 후보로 넘어갑니다.")
     return None, None
 
 
