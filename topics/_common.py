@@ -396,7 +396,10 @@ def run_topic(spec: TopicSpec) -> dict:
         role=spec.writer_role, goal=spec.writer_goal, backstory=spec.writer_backstory,
         long_form=bool(spec.long_form_guidance),
     )
-    reviewer = build_reviewer_agent(role=spec.reviewer_role, goal=spec.reviewer_goal, checklist=spec.reviewer_checklist)
+    reviewer = build_reviewer_agent(
+        role=spec.reviewer_role, goal=spec.reviewer_goal, checklist=spec.reviewer_checklist,
+        long_form=bool(spec.long_form_guidance),
+    )
 
     prompt = _writer_prompt(spec, chosen["title"], context_text)
     expected = "'제목:'/'요약:' 줄 + '## 섹션명' 헤더로 구성된 마크다운 노트"
