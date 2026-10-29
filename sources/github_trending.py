@@ -230,7 +230,7 @@ def _catalog_readme_excerpt(text: str, max_chars: int) -> str:
 
 
 def _code_excerpt(path: str, text: str, max_chars: int) -> str:
-    """Keep definitions from several parts of large files instead of only the first lines."""
+    """Keep representative definitions from the beginning, middle, and end of large source files."""
     if len(text) <= max_chars:
         return text
 
@@ -249,28 +249,29 @@ def _code_excerpt(path: str, text: str, max_chars: int) -> str:
     if not starts:
         head_budget = int(max_chars * 0.55)
         tail_budget = max_chars - head_budget - 60
-        return (
-            text[:head_budget]
-            + "\n\n[중간 코드 생략]\n\n"
-            + text[-tail_budget:]
-        )
+        return text[:head_budget] + "\n\n[중간 코드 생략]\n\n" + text[-tail_budget:]
 
-    # Reserve space for the file start and end, then sample definition neighborhoods across the file.
-    windows: list[tuple[int, int]] = [(0, min(len(lines), max(8, int(len(lines) * 0.10))))]
-    if len(starts) > 1:
-        target_count = 8
+    # Pick fewer windows for small budgets, and spread them across definition positions.
+    target_count = max(2, min(8, (max_chars - 300) // 250))
+    if len(starts) <= target_count:
+        sampled = starts
+    else:
         indexes = sorted({
-            round(i * (len(starts) - 1) / max(1, target_count - 1))
-            for i in range(min(target_count, len(starts)))
+            round(i * (len(starts) - 1) / (target_count - 1))
+            for i in range(target_count)
         })
-        for idx in indexes:
-            center = starts[idx]
-            windows.append((max(0, center - 4), min(len(lines), center + 14)))
-    windows.append((max(0, len(lines) - max(8, int(len(lines) * 0.08))), len(lines)))
+        sampled = [starts[index] for index in indexes]
+
+    windows: list[tuple[int, int]] = [
+        (0, min(len(lines), max(6, int(len(lines) * 0.05)))),
+    ]
+    for center in sampled:
+        windows.append((max(0, center - 3), min(len(lines), center + 9)))
+    windows.append((max(0, len(lines) - max(6, int(len(lines) * 0.05))), len(lines)))
 
     merged: list[tuple[int, int]] = []
     for left, right in sorted(windows):
-        if merged and left <= merged[-1][1] + 2:
+        if merged and left <= merged[-1][1] + 1:
             merged[-1] = (merged[-1][0], max(merged[-1][1], right))
         else:
             merged.append((left, right))
@@ -279,10 +280,12 @@ def _code_excerpt(path: str, text: str, max_chars: int) -> str:
     used = 0
     for left, right in merged:
         block = "\n".join(lines[left:right])
-        marker = "\n[...]\n" if output else ""
-        if used + len(marker) + len(block) > max_chars:
-            allowance = max_chars - used - len(marker)
-            if allowance > 200:
+        marker = "\n[... 중간 코드 생략 ...]\n" if output else ""
+        allowance = max_chars - used - len(marker)
+        if allowance <= 0:
+            break
+        if len(block) > allowance:
+            if allowance >= 120:
                 output.extend([marker, block[:allowance]])
                 used = max_chars
             break
@@ -291,10 +294,8 @@ def _code_excerpt(path: str, text: str, max_chars: int) -> str:
             used += len(marker)
         output.append(block)
         used += len(block)
-    if not output:
-        return text[:max_chars]
-    return "".join(output)[:max_chars]
 
+    return "".join(output)[:max_chars] if output else text[:max_chars]
 
 def _source_excerpt(path: str, text: str, max_chars: int) -> str:
     """Use broader excerpts for long docs and stratified excerpts for source code."""
