@@ -301,7 +301,7 @@ def _source_excerpt(path: str, text: str, max_chars: int) -> str:
     lower = path.lower()
     name = lower.rsplit("/", 1)[-1]
     code_extensions = (".py", ".ts", ".tsx", ".js", ".mjs", ".go", ".rs", ".java", ".c", ".cc", ".cpp", ".h")
-    if "/" not in path and name in {"readme.md", "readme.rst", "readme"}:
+    if name in {"readme.md", "readme.rst", "readme"}:
         return _catalog_readme_excerpt(text, max_chars)
     if lower.endswith(code_extensions):
         return _code_excerpt(path, text, max_chars)
@@ -448,7 +448,18 @@ def fetch_repository_context(candidate: dict) -> dict:
         "build.gradle", "Dockerfile", "SECURITY.md", "CONTRIBUTING.md",
         "ARCHITECTURE.md", "docs/architecture.md",
     ]
-    selected_paths = [p for p in preferred_exact if p in tree_paths][:5]
+    preferred_rank = {
+        "README.md": 0, "README.rst": 0, "README": 0,
+        "LICENSE.txt": 1, "LICENSE": 1, "LICENSE.md": 1, "COPYING": 1, "COPYING.md": 1,
+        "SECURITY.md": 2, "SECURITY": 2,
+        "pyproject.toml": 3, "package.json": 3, "Cargo.toml": 3, "go.mod": 3,
+        "pom.xml": 3, "build.gradle": 3, "Dockerfile": 3,
+        "CONTRIBUTING.md": 4, "ARCHITECTURE.md": 4, "docs/architecture.md": 4,
+    }
+    selected_paths = sorted(
+        (path for path in preferred_exact if path in tree_paths),
+        key=lambda path: (preferred_rank.get(path, 10), path.lower()),
+    )[:5]
 
     code_extensions = (".py", ".ts", ".tsx", ".js", ".mjs", ".go", ".rs", ".java", ".c", ".cc", ".cpp", ".h")
     ignored_parts = (
@@ -471,8 +482,9 @@ def fetch_repository_context(candidate: dict) -> dict:
             "main.", "core.", "engine.", "client.", "server.", "parser.", "agent.",
             "api.", "service.", "database.", "cache.", "pipeline.", "gpt", "llm",
             "tokenizer", "attention", "transformer", "train", "generate", "inference",
+            "c_api", "security", "safety", "session", "model", "runtime",
         )):
-            score += 25
+            score += 35
         if any(word in lower for word in ("test_", "_test.", ".spec.", ".test.")):
             score -= 35
         if name in {"__init__.py", "index.js", "index.ts", "index.tsx"}:
@@ -598,7 +610,8 @@ def fetch_repository_context(candidate: dict) -> dict:
         "추가로 수집한 공식 저장소 파일(원문 자료, 그대로 복사하지 말 것):",
     ]
     for path, text_content in file_texts:
-        parts.extend(["", f"--- FILE: {path} ---", text_content])
+        file_url = f"https://github.com/{full_name}/blob/{quote(branch, safe='')}/{quote(path, safe='/')}"
+        parts.extend(["", f"--- FILE: {path} ---", f"공식 파일 URL: {file_url}", text_content])
     # Reviewer에게도 원문 근거를 전달해야 추측성 지적을 줄일 수 있습니다.
     # 파일 경로 목록은 존재 여부만 나타내며, 실제 파일 내용과 구분해 제공합니다.
     top_level_names = sorted({path.split("/", 1)[0] for path in tree_paths if path})
@@ -673,7 +686,8 @@ def fetch_repository_context(candidate: dict) -> dict:
         if allowance < 400:
             break
         snippet = text_content[:allowance]
-        review_parts.extend(["", f"--- {path} (원문 발췌) ---", snippet])
+        file_url = f"https://github.com/{full_name}/blob/{quote(branch, safe='')}/{quote(path, safe='/')}"
+        review_parts.extend(["", f"--- {path} (원문 발췌) ---", f"공식 파일 URL: {file_url}", snippet])
         review_budget -= len(path) + len(snippet) + 20
         if is_code:
             code_excerpt_count += 1
