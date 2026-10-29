@@ -700,6 +700,12 @@ def fetch_repository_context(candidate: dict) -> dict:
         "review_context": "\n".join(review_parts),
         "tree_paths": tree_paths,
         "tree_complete": tree_complete,
+        "source_file_count": len(file_texts),
+        "analysis_source_count": sum(
+            1 for path, text_content in file_texts
+            if len(text_content.strip()) >= 200
+            and not any(token in path.rsplit("/", 1)[-1].lower() for token in ("license", "copying", "notice"))
+        ),
         "source_url": repo.get("html_url", candidate.get("link")),
         "sources": [{
             "platform": "GitHub", "title": repo.get("full_name", full_name),
