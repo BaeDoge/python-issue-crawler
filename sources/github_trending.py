@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -14,7 +15,7 @@ from urllib.parse import quote
 import requests
 from requests.exceptions import RequestException
 
-from config import OUTPUT_DIR
+from config import LOG_DIR, OUTPUT_DIR
 
 API_ROOT = "https://api.github.com"
 DEFAULT_LIMIT = max(1, int(os.getenv("GITHUB_DISCOVERY_LIMIT", "8")))
@@ -102,6 +103,126 @@ def _candidate(item: dict, group: str, kind: str) -> dict:
     }
 
 
+
+def _candidate_snapshot_dir() -> Path:
+    path = LOG_DIR / "github_candidates"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _migrate_and_prune_candidate_snapshots() -> None:
+    """Move legacy candidate snapshots out of output_files and retain only a small recent set."""
+    snapshot_dir = _candidate_snapshot_dir()
+
+    # 이전 버전이 output_files에 남긴 후보 스냅샷은 삭제하지 않고 로그 폴더로 이동합니다.
+    if OUTPUT_DIR.exists():
+        for legacy in OUTPUT_DIR.glob("github_opensource_candidates_*.json"):
+            destination = snapshot_dir / legacy.name
+            try:
+                if destination.exists():
+                    legacy.unlink()
+                else:
+                    shutil.move(str(legacy), str(destination))
+            except OSError as exc:
+                print(f"[GitHub] 이전 후보 JSON 정리 경고({legacy.name}): {exc}")
+
+    try:
+        keep_count = max(0, int(os.getenv("GITHUB_CANDIDATE_SNAPSHOT_KEEP", "5")))
+    except ValueError:
+        keep_count = 5
+    snapshots = sorted(
+        snapshot_dir.glob("github_opensource_candidates_*.json"),
+        key=lambda item: item.stat().st_mtime,
+        reverse=True,
+    )
+    for old in snapshots[keep_count:]:
+        try:
+            old.unlink()
+        except OSError as exc:
+            print(f"[GitHub] 오래된 후보 JSON 정리 경고({old.name}): {exc}")
+
+
+def _save_candidate_snapshot(payload: dict) -> Path | None:
+    """Keep candidate discovery artifacts under logs, not beside generated blog posts."""
+    _migrate_and_prune_candidate_snapshots()
+    if os.getenv("GITHUB_SAVE_CANDIDATE_SNAPSHOTS", "true").strip().lower() in {"0", "false", "no"}:
+        print("[GitHub] 후보 JSON 스냅샷 저장 비활성화됨 (GITHUB_SAVE_CANDIDATE_SNAPSHOTS=false)")
+        return None
+
+    output_path = _candidate_snapshot_dir() / (
+        f"github_opensource_candidates_{datetime.now():%Y%m%d_%H%M%S_%f}.json"
+    )
+    output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    _migrate_and_prune_candidate_snapshots()
+    return output_path
+
+
+def _catalog_readme_excerpt(text: str, max_chars: int) -> str:
+    """For long link collections, retain section-to-link associations from across the README."""
+    if len(text) <= max_chars:
+        return text
+
+    lines = text.splitlines()
+    intro = text[:min(1800, max_chars // 5)]
+    remaining = max_chars - len(intro) - 120
+    sections: list[list[str]] = []
+    current: list[str] = []
+    for line in lines:
+        if re.match(r"^#{1,4}\s+", line):
+            if current:
+                sections.append(current)
+            current = [line]
+        elif current:
+            current.append(line)
+    if current:
+        sections.append(current)
+
+    sampled: list[str] = []
+    for section in sections:
+        heading = section[0].strip()
+        entries: list[str] = []
+        # Keep exact link lines and a small amount of adjacent prose, not just the start of the file.
+        for line in section[1:]:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            is_link = bool(re.search(r"\[[^\]]+\]\(https?://[^)]+\)", stripped))
+            is_list = stripped.startswith(("- ", "* ", "+ "))
+            if is_link or is_list:
+                entries.append(stripped)
+            if len(entries) >= 2:
+                break
+        if not entries:
+            continue
+        block = "\n".join([heading, *entries])
+        if len(block) > remaining:
+            break
+        sampled.append(block)
+        remaining -= len(block) + 2
+        if remaining <= 300:
+            break
+
+    omitted_note = "\n\n[README가 길어 각 섹션 제목과 대표 링크 일부만 발췌했습니다. 아래 목록은 전체 목록이 아닙니다.]\n"
+    pieces = [intro.rstrip(), omitted_note.rstrip(), *sampled]
+    return "\n\n".join(pieces)[:max_chars]
+
+
+def _source_excerpt(path: str, text: str, max_chars: int) -> str:
+    """Use a larger, stratified excerpt for README catalogs and focused excerpts for other files."""
+    lower = path.lower()
+    name = lower.rsplit("/", 1)[-1]
+    if "/" not in path and name in {"readme.md", "readme.rst", "readme"}:
+        return _catalog_readme_excerpt(text, max_chars)
+    if len(text) <= max_chars:
+        return text
+    if name in {"security.md", "contributing.md", "architecture.md"}:
+        # Preserve both the opening context and the final reporting/instructions section.
+        head = int(max_chars * 0.7)
+        tail = max_chars - head
+        return text[:head] + "\n\n[중간 내용 일부 생략]\n\n" + text[-tail:]
+    return text[:max_chars]
+
+
 def discover_github_candidates(limit: int | None = None) -> dict:
     """전 분야의 인기 저장소와 최근 활동 저장소를 나눠 수집하고 JSON으로 저장합니다."""
     per_query = max(1, limit or DEFAULT_LIMIT)
@@ -169,8 +290,6 @@ def discover_github_candidates(limit: int | None = None) -> dict:
         key=lambda x: (x["pushed_days"] is not None and x["pushed_days"] <= 7, x["score"], x["stars"]),
         reverse=True,
     )
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    output_path = OUTPUT_DIR / f"github_opensource_candidates_{datetime.now():%Y%m%d_%H%M%S}.json"
     payload = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "methodology": (
@@ -181,8 +300,9 @@ def discover_github_candidates(limit: int | None = None) -> dict:
         "trending": trending_items,
         "errors": errors,
     }
-    output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"\nJSON 저장: {output_path}")
+    output_path = _save_candidate_snapshot(payload)
+    if output_path:
+        print(f"\n후보 스냅샷 저장: {output_path}")
     print(f"인기 후보 {len(popular_items)}개 / 최근 활동 후보 {len(trending_items)}개")
     if errors:
         print(f"검색 오류 {len(errors)}건. 네트워크/인증서 정책 또는 GitHub API 제한을 확인하세요.")
@@ -216,6 +336,7 @@ def fetch_repository_context(candidate: dict) -> dict:
         return {}
     branch = repo.get("default_branch") or "main"
     tree_paths: list[str] = []
+    tree_complete = False
     file_texts: list[tuple[str, str]] = []
     try:
         tree_payload = _request(
@@ -224,7 +345,8 @@ def fetch_repository_context(candidate: dict) -> dict:
         tree_paths = [
             entry.get("path", "") for entry in tree_payload.get("tree", [])
             if entry.get("type") == "blob" and entry.get("path")
-        ][:2500]
+        ]
+        tree_complete = not bool(tree_payload.get("truncated", False))
     except (RequestException, ValueError) as exc:
         print(f"[GitHub] 파일 트리 조회 실패(메타데이터로 계속 진행): {exc}")
 
@@ -335,12 +457,35 @@ def fetch_repository_context(candidate: dict) -> dict:
     # 긴 저장소에서도 컨텍스트 크기를 제한하고, tree path만 보고 내부 동작을 추정하지 않습니다.
     selected_paths = selected_paths[:10]
 
+    # Keep the writer prompt bounded. A long catalog README receives a sampled excerpt
+    # from across its sections; code/config files receive focused excerpts.
+    used_chars = 0
     for path in selected_paths:
         url = f"https://raw.githubusercontent.com/{full_name}/{quote(branch, safe='')}/{quote(path, safe='/')}"
+        lower = path.lower()
+        name = lower.rsplit("/", 1)[-1]
+        if "/" not in path and name in {"readme.md", "readme.rst", "readme"}:
+            file_budget = 11_000
+        elif lower.endswith(code_extensions):
+            file_budget = 4_600
+        elif "license" in name or name.startswith("copying"):
+            file_budget = 2_400
+        elif name in {"security.md", "contributing.md", "architecture.md"}:
+            file_budget = 2_800
+        elif name in {"pyproject.toml", "package.json", "cargo.toml", "go.mod", "pom.xml", "build.gradle"}:
+            file_budget = 2_200
+        else:
+            file_budget = 2_600
+        remaining_budget = 34_000 - used_chars
+        if remaining_budget < 700:
+            break
+        file_budget = min(file_budget, remaining_budget)
         try:
             response = SESSION.get(url, timeout=20, verify=SSL_VERIFY)
             if response.status_code == 200 and len(response.text) < 180_000:
-                file_texts.append((path, response.text[:5000]))
+                excerpt = _source_excerpt(path, response.text, file_budget)
+                file_texts.append((path, excerpt))
+                used_chars += len(excerpt) + len(path) + 80
         except RequestException:
             continue
 
@@ -448,6 +593,7 @@ def fetch_repository_context(candidate: dict) -> dict:
         "context_text": "\n".join(parts),
         "review_context": "\n".join(review_parts),
         "tree_paths": tree_paths,
+        "tree_complete": tree_complete,
         "source_url": repo.get("html_url", candidate.get("link")),
         "sources": [{
             "platform": "GitHub", "title": repo.get("full_name", full_name),
