@@ -65,13 +65,15 @@ VERIFIER_MODEL = _role_model("OMNIROUTE_MODEL_VERIFIER", "auto/quality")
 
 llm_scout = _omni_llm(SCOUT_MODEL, temperature=0.4, max_tokens=1536)
 # 추론 모델은 <think> 토큰도 max_tokens에 포함돼서, 값이 작으면 글이 중간에 끊깁니다.
-WRITER_MAX_TOKENS = int(os.getenv("OMNIROUTE_WRITER_MAX_TOKENS", "6000"))
-# 검수 사이클 횟수. 각 사이클은 TopicSpec.max_rounds(기본 5라운드)까지 재작성합니다.
+WRITER_MAX_TOKENS = max(2048, int(os.getenv("OMNIROUTE_WRITER_MAX_TOKENS", "10000")))
+VERIFIER_MAX_TOKENS = max(1024, int(os.getenv("OMNIROUTE_VERIFIER_MAX_TOKENS", "6144")))
+# 검수 사이클 횟수. 장문 오픈소스 주제는 비용/지연 방지를 위해 별도로 최대 2회 시도를 사용합니다.
 QUALITY_ATTEMPTS = max(1, int(os.getenv("QUALITY_ATTEMPTS", "3")))
-llm_writer = _omni_llm(WRITER_MODEL, temperature=0.4, max_tokens=WRITER_MAX_TOKENS)
+llm_writer = _omni_llm(WRITER_MODEL, temperature=0.35, max_tokens=WRITER_MAX_TOKENS)
 # English translation uses the writer model with a lower temperature; it is only called when an English target is configured.
 llm_translator = _omni_llm(WRITER_MODEL, temperature=0.2, max_tokens=WRITER_MAX_TOKENS)
-llm_verifier = _omni_llm(VERIFIER_MODEL, temperature=0.1, max_tokens=2048)
+# More room prevents a thinking model from truncating structured review JSON after spending tokens on reasoning.
+llm_verifier = _omni_llm(VERIFIER_MODEL, temperature=0.0, max_tokens=VERIFIER_MAX_TOKENS)
 
 # -----------------------------------------------------------------------
 # 출력 / 로그
