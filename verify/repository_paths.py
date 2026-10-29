@@ -5,13 +5,20 @@ import re
 
 
 def _repository_path_pattern(repository_paths: list[str]) -> re.Pattern | None:
-    roots = sorted(
-        {path.strip("/").split("/", 1)[0] for path in repository_paths if path.strip("/") and "/" in path.strip("/")},
-        key=lambda item: (-len(item), item.lower()),
-    )
-    if not roots:
+    roots = {
+        path.strip("/").split("/", 1)[0]
+        for path in repository_paths
+        if path.strip("/") and "/" in path.strip("/")
+    }
+    alternatives = [re.escape(root) for root in roots]
+    # These project-family patterns must also catch a missing root such as appendix-D
+    # when the real tree only contains appendix-E.
+    alternatives.extend([r"ch\d{2,}", r"appendix-[A-Z]"])
+    alternatives.extend(re.escape(root) for root in ("setup", "pkg", ".github"))
+    alternatives = sorted(set(alternatives), key=lambda item: (-len(item), item.lower()))
+    if not alternatives:
         return None
-    root_pattern = "|".join(re.escape(root) for root in roots)
+    root_pattern = "|".join(alternatives)
     return re.compile(
         rf"(?<![A-Za-z0-9_.-])((?:{root_pattern})(?:/[A-Za-z0-9_.+@-]+)+)"
     )
