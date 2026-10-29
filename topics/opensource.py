@@ -119,8 +119,8 @@ SPEC = TopicSpec(
         "Security, Licensing, and Adoption Checks",
         "Limitations and Who Should Use It",
     ),
-    min_section_chars=300,
-    min_total_chars=3000,
+    min_section_chars=250,
+    min_total_chars=2500,
     max_rounds=3,
     long_form_guidance=LONG_FORM_GUIDANCE,
     extra_writer_rules=(
