@@ -685,7 +685,7 @@ def fetch_repository_context(candidate: dict) -> dict:
         allowance = min(_review_excerpt_limit(path), review_budget)
         if allowance < 400:
             break
-        snippet = text_content[:allowance]
+        snippet = _source_excerpt(path, text_content, allowance)
         file_url = f"https://github.com/{full_name}/blob/{quote(branch, safe='')}/{quote(path, safe='/')}"
         review_parts.extend(["", f"--- {path} (원문 발췌) ---", f"공식 파일 URL: {file_url}", snippet])
         review_budget -= len(path) + len(snippet) + 20
