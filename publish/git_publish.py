@@ -31,6 +31,64 @@ def _run_git(repo_path: Path, *args: str) -> str:
     return (result.stdout or "").strip()
 
 
+
+def _sync_branch(repo_path: Path, branch: str) -> None:
+    """Fetch and safely sync the local branch before publishing.
+
+    Fast-forward when possible. If local and remote both contain unique commits,
+    rebase local-only commits onto origin/<branch>. On conflict, abort the rebase
+    so the publisher does not leave the target repository mid-rebase.
+    """
+    remote_ref = f"origin/{branch}"
+    counts_text = _run_git(
+        repo_path, "rev-list", "--left-right", "--count", f"HEAD...{remote_ref}"
+    )
+    try:
+        local_only, remote_only = (int(value) for value in counts_text.split())
+    except (ValueError, TypeError) as exc:
+        raise PublishError(
+            f"{branch}와 {remote_ref}의 커밋 차이를 해석할 수 없습니다: {counts_text!r}"
+        ) from exc
+
+    if remote_only == 0:
+        # Local is equal to or ahead of origin; preserve local-only commits.
+        return
+
+    if local_only == 0:
+        _run_git(repo_path, "merge", "--ff-only", remote_ref)
+        return
+
+    print(
+        f"{repo_path.name}: 로컬 {branch}와 {remote_ref}가 분기되어 있습니다 "
+        f"(로컬 전용 {local_only}개, 원격 전용 {remote_only}개). "
+        "로컬 커밋을 원격 최신 커밋 위로 rebase합니다."
+    )
+    try:
+        _run_git(repo_path, "rebase", remote_ref)
+    except PublishError as exc:
+        abort = subprocess.run(
+            ["git", "rebase", "--abort"],
+            cwd=str(repo_path),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=90,
+        )
+        if abort.returncode == 0:
+            abort_detail = " 자동 rebase를 취소해 원래 로컬 커밋 상태로 복구했습니다."
+        else:
+            abort_detail = (
+                " 자동 rebase 취소도 완료되지 않았습니다. 추가 Git 명령을 실행하지 말고 "
+                "'git status'로 상태를 확인하세요."
+            )
+        raise PublishError(
+            f"{branch}와 {remote_ref}의 자동 rebase에 충돌이 발생해 발행을 중단했습니다."
+            f"{abort_detail}\n원인: {exc}\n"
+            f"다음 명령으로 양쪽 전용 커밋과 충돌 파일을 확인하세요: "
+            f"'git log --oneline --left-right --graph HEAD...{remote_ref}'"
+        ) from exc
+
 def _safe_relative(value: str | Path) -> Path:
     path = Path(value)
     if path.is_absolute() or not path.parts or ".." in path.parts:
@@ -70,7 +128,7 @@ def _publish_to_repo(
 
         _run_git(repo_path, "fetch", "origin", branch)
         _run_git(repo_path, "checkout", branch)
-        _run_git(repo_path, "pull", "--ff-only", "origin", branch)
+        _sync_branch(repo_path, branch)
 
         posts_dir = _safe_relative(target["posts_dir"])
         if target["category_subdirs"]:
