@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import time
 from datetime import datetime, timedelta, timezone
@@ -145,7 +146,7 @@ def _migrate_and_prune_candidate_snapshots() -> None:
 def _save_candidate_snapshot(payload: dict) -> Path | None:
     """Keep candidate discovery artifacts under logs, not beside generated blog posts."""
     _migrate_and_prune_candidate_snapshots()
-    if os.getenv("GITHUB_SAVE_CANDIDATE_SNAPSHOTS", "true").strip().lower() in {"0", "false", "no"}:
+    if os.getenv("GITHUB_SAVE_CANDIDATE_SNAPSHOTS", "false").strip().lower() in {"0", "false", "no"}:
         print("[GitHub] 후보 JSON 스냅샷 저장 비활성화됨 (GITHUB_SAVE_CANDIDATE_SNAPSHOTS=false)")
         return None
 
@@ -465,18 +466,18 @@ def fetch_repository_context(candidate: dict) -> dict:
         lower = path.lower()
         name = lower.rsplit("/", 1)[-1]
         if "/" not in path and name in {"readme.md", "readme.rst", "readme"}:
-            file_budget = 11_000
+            file_budget = 13_000
         elif lower.endswith(code_extensions):
-            file_budget = 4_600
+            file_budget = 5_600
         elif "license" in name or name.startswith("copying"):
-            file_budget = 2_400
+            file_budget = 3_000
         elif name in {"security.md", "contributing.md", "architecture.md"}:
-            file_budget = 2_800
+            file_budget = 3_200
         elif name in {"pyproject.toml", "package.json", "cargo.toml", "go.mod", "pom.xml", "build.gradle"}:
-            file_budget = 2_200
+            file_budget = 2_600
         else:
             file_budget = 2_600
-        remaining_budget = 34_000 - used_chars
+        remaining_budget = 42_000 - used_chars
         if remaining_budget < 700:
             break
         file_budget = min(file_budget, remaining_budget)
@@ -516,6 +517,7 @@ def fetch_repository_context(candidate: dict) -> dict:
         f"저장소: {repo.get('full_name', full_name)}",
         f"공식 URL: {repo.get('html_url', candidate.get('link', ''))}",
         f"기본 브랜치: {branch}",
+        f"파일 트리 전체 확인: {'예' if tree_complete else '아니오(잘렸거나 조회 실패)'}",
         f"생성일: {repo.get('created_at', '미확인')} / 최근 push: {repo.get('pushed_at', '미확인')}",
         f"GitHub 라이선스 메타데이터(SPDX; 원문 LICENSE와 별개): {license_info.get('spdx_id') or '미확인'}",
         "최상위 파일/디렉터리 이름(트리에서 추출):",
@@ -526,7 +528,7 @@ def fetch_repository_context(candidate: dict) -> dict:
         "",
         "실제로 다운로드한 공식 파일 원문 발췌:",
     ]
-    review_budget = 16_000 - sum(len(part) for part in review_parts)
+    review_budget = 24_000 - sum(len(part) for part in review_parts)
 
     code_extensions_for_review = (".py", ".ts", ".tsx", ".js", ".mjs", ".go", ".rs", ".java", ".c", ".cc", ".cpp", ".h")
 
@@ -552,16 +554,16 @@ def fetch_repository_context(candidate: dict) -> dict:
         lower = path.lower()
         name = lower.rsplit("/", 1)[-1]
         if "/" not in path and name in {"readme.md", "readme.rst", "readme"}:
-            return 2_000
+            return 3_400
         if lower.endswith(code_extensions_for_review):
-            return 2_400
+            return 3_200
         if "license" in name or name.startswith("copying"):
             return 2_200
         if name in {"pyproject.toml", "package.json", "cargo.toml", "go.mod", "pom.xml", "build.gradle"}:
             return 2_000
         if name == "readme.md":
             return 1_300
-        return 1_100
+        return 1_600
 
     code_excerpt_count = 0
     document_excerpt_count = 0
