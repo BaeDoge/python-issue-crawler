@@ -164,7 +164,7 @@ def _catalog_readme_excerpt(text: str, max_chars: int) -> str:
         return text
 
     lines = text.splitlines()
-    first_heading = next((i for i, line in enumerate(lines) if re.match(r"^#{1,4}\s+", line)), len(lines))
+    first_heading = next((i for i, line in enumerate(lines) if re.match(r"^#{2,4}\s+", line)), len(lines))
     intro = "\n".join(lines[:first_heading]).strip()
     intro_limit = min(2_000, max_chars // 5)
     if len(intro) > intro_limit:
