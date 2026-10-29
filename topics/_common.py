@@ -138,7 +138,11 @@ def _writer_prompt(spec: TopicSpec, chosen_title: str, context_text: str) -> str
         + "\n\n(섹션 헤더는 위와 똑같이 '## 섹션명'으로 쓰고, 모든 섹션을 빠짐없이 쓸 것)"
     )
 
-def _deterministic_check(spec: TopicSpec, repository_paths: list[str] | None = None):
+def _deterministic_check(
+    spec: TopicSpec,
+    repository_paths: list[str] | None = None,
+    repository_tree_complete: bool = False,
+):
     def check(draft_raw: str) -> dict:
         data = parse_note_text(draft_raw, spec.section_names)
         if not data:
@@ -174,14 +178,14 @@ def _deterministic_check(spec: TopicSpec, repository_paths: list[str] | None = N
                     issues.append(f"'{name}' 섹션에 '{phrase}' 표현이 있음 — 독자가 실제로 따라 할 수 있는 "
                                   "해결 조치를 써야 함(기다리라거나 불가능하다는 내용은 불합격)")
 
-        all_text = title + " " + json.dumps(sections, ensure_ascii=False)
+        all_text = title + " " + (data.get("summary", "") or "") + " " + json.dumps(sections, ensure_ascii=False)
         body_chars = sum(len((sections.get(name) or "").strip()) for name in spec.section_names)
         if spec.min_total_chars and body_chars < spec.min_total_chars:
             issues.append(
                 f"본문이 장문 기준보다 짧음(현재 {body_chars}자, 최소 {spec.min_total_chars}자). "
                 "배경·기술적 동작 원리·구체적인 활용 사례·한계와 위험을 근거 중심으로 확장할 것"
             )
-        if repository_paths:
+        if repository_paths and repository_tree_complete:
             all_body_text = "\n".join(
                 [title, data.get("summary", "") or ""]
                 + [(sections.get(name) or "") for name in spec.section_names]
@@ -205,9 +209,18 @@ def _pick_candidate_with_context(spec: TopicSpec, candidates: list, chosen: dict
     order = [chosen] + [c for c in candidates if c is not chosen]
     for cand in order[:MAX_CONTEXT_ATTEMPTS]:
         ctx = spec.build_context(cand)
-        if ctx.get("context_text"):
+        has_context = bool(ctx.get("context_text"))
+        has_source_evidence = (
+            not spec.long_form_guidance
+            or int(ctx.get("analysis_source_count", 0)) >= 1
+        )
+        if has_context and has_source_evidence:
             return cand, ctx
-        print(f"[{spec.key}] '{cand['title'][:50]}' 상세 자료를 못 가져와서 다음 후보로 넘어갑니다.")
+        if has_context and spec.long_form_guidance and not has_source_evidence:
+            reason = "실제 파일 원문을 가져오지 못함"
+        else:
+            reason = "상세 자료를 가져오지 못함"
+        print(f"[{spec.key}] '{cand['title'][:50]}' {reason}. 다음 후보로 넘어갑니다.")
     return None, None
 
 
@@ -392,7 +405,10 @@ def run_topic(spec: TopicSpec) -> dict:
         role=spec.writer_role, goal=spec.writer_goal, backstory=spec.writer_backstory,
         long_form=bool(spec.long_form_guidance),
     )
-    reviewer = build_reviewer_agent(role=spec.reviewer_role, goal=spec.reviewer_goal, checklist=spec.reviewer_checklist)
+    reviewer = build_reviewer_agent(
+        role=spec.reviewer_role, goal=spec.reviewer_goal, checklist=spec.reviewer_checklist,
+        long_form=bool(spec.long_form_guidance),
+    )
 
     prompt = _writer_prompt(spec, chosen["title"], context_text)
     expected = "'제목:'/'요약:' 줄 + '## 섹션명' 헤더로 구성된 마크다운 노트"
@@ -403,7 +419,9 @@ def run_topic(spec: TopicSpec) -> dict:
         initial_prompt=prompt,
         critique_instructions=f"아래 '{spec.label}' 초안을 다음 기준으로 평가해라: {spec.reviewer_checklist}",
         expected_output=expected,
-        deterministic_check_fn=_deterministic_check(spec, ctx.get("tree_paths")),
+        deterministic_check_fn=_deterministic_check(
+            spec, ctx.get("tree_paths"), bool(ctx.get("tree_complete", False))
+        ),
         max_rounds=spec.max_rounds,
         log_prefix=f"[{spec.key}] ",
         stop_on_repeated_issues=bool(spec.long_form_guidance),

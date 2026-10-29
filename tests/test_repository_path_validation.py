@@ -38,6 +38,39 @@ class RepositoryPathValidationTests(unittest.TestCase):
         )
         self.assertEqual(find_unverified_repository_paths(text, tree), [])
 
+
+    def test_handles_non_chapter_repositories(self):
+        tree = [
+            "tensorflow/c/c_api.h",
+            "tensorflow/c/eager/c_api.h",
+            "tensorflow/core/public/session.h",
+            "LICENSE",
+        ]
+        self.assertEqual(
+            find_unverified_repository_paths(
+                "See tensorflow/c/c_api.h and tensorflow/c/eager/c_api.h.",
+                tree,
+            ),
+            [],
+        )
+        self.assertEqual(
+            find_unverified_repository_paths(
+                "See tensorflow/c/eager/not_a_real_header.h.",
+                tree,
+            ),
+            ["tensorflow/c/eager/not_a_real_header.h"],
+        )
+
+    def test_ignores_external_urls(self):
+        tree = ["tensorflow/c/c_api.h"]
+        self.assertEqual(
+            find_unverified_repository_paths(
+                "Official URL: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/c/c_api.h",
+                tree,
+            ),
+            [],
+        )
+
     def test_returns_no_findings_without_tree_data(self):
         self.assertEqual(find_unverified_repository_paths("ch04/not-real.py", None), [])
 
