@@ -178,7 +178,7 @@ def _deterministic_check(
                     issues.append(f"'{name}' 섹션에 '{phrase}' 표현이 있음 — 독자가 실제로 따라 할 수 있는 "
                                   "해결 조치를 써야 함(기다리라거나 불가능하다는 내용은 불합격)")
 
-        all_text = title + " " + json.dumps(sections, ensure_ascii=False)
+        all_text = title + " " + (data.get("summary", "") or "") + " " + json.dumps(sections, ensure_ascii=False)
         body_chars = sum(len((sections.get(name) or "").strip()) for name in spec.section_names)
         if spec.min_total_chars and body_chars < spec.min_total_chars:
             issues.append(
