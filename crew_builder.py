@@ -50,14 +50,22 @@ def build_writer_agent(*, role: str, goal: str, backstory: str, long_form: bool 
     )
 
 
-def build_reviewer_agent(*, role: str, goal: str, checklist: str) -> Agent:
+def build_reviewer_agent(
+    *, role: str, goal: str, checklist: str, long_form: bool = False,
+) -> Agent:
+    reviewer_rules = (
+        "중대 사실 오류, 원문과 충돌하는 주장, 존재하지 않는 파일 경로, "
+        "보안/라이선스 오정보, 독자를 오도하는 핵심 결함만 통과를 막는다. "
+        "사소한 문체 취향, 부수적인 누락, 더 자세히 설명할 수 있다는 이유만으로 실패시키지 않는다. "
+        "검증할 수 없는 주변 사실은 거짓이라고 단정하지 말고, 핵심 주장인지 먼저 판단한다. "
+        "실제 오류가 없으면 반드시 passed=true와 빈 issues 목록을 반환한다."
+        if long_form else
+        "문제가 있으면 통과시키지 않고 구체적으로 뭘 고쳐야 하는지 말한다."
+    )
     return Agent(
         role=role,
         goal=goal,
-        backstory=(
-            f"발행 직전 마지막 검수자. 확인 항목: {checklist}\n\n"
-            "문제가 있으면 통과시키지 않고 구체적으로 뭘 고쳐야 하는지 말한다."
-        ),
+        backstory=f"발행 직전 마지막 검수자. 확인 항목: {checklist}\n\n{reviewer_rules}",
         llm=llm_verifier,
         verbose=True,
         max_iter=2,
