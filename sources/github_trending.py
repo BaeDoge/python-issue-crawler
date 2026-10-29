@@ -159,16 +159,20 @@ def _save_candidate_snapshot(payload: dict) -> Path | None:
 
 
 def _catalog_readme_excerpt(text: str, max_chars: int) -> str:
-    """For long link collections, retain section-to-link associations from across the README."""
+    """Summarize a large README across its sections rather than truncating at the beginning."""
     if len(text) <= max_chars:
         return text
 
     lines = text.splitlines()
-    intro = text[:min(1800, max_chars // 5)]
-    remaining = max_chars - len(intro) - 120
+    first_heading = next((i for i, line in enumerate(lines) if re.match(r"^#{1,4}\s+", line)), len(lines))
+    intro = "\n".join(lines[:first_heading]).strip()
+    intro_limit = min(2_000, max_chars // 5)
+    if len(intro) > intro_limit:
+        intro = intro[:intro_limit].rsplit("\n", 1)[0] + "\n[도입부 일부 생략]"
+
     sections: list[list[str]] = []
     current: list[str] = []
-    for line in lines:
+    for line in lines[first_heading:]:
         if re.match(r"^#{1,4}\s+", line):
             if current:
                 sections.append(current)
@@ -178,51 +182,136 @@ def _catalog_readme_excerpt(text: str, max_chars: int) -> str:
     if current:
         sections.append(current)
 
-    sampled: list[str] = []
+    blocks: list[str] = []
     for section in sections:
         heading = section[0].strip()
         entries: list[str] = []
-        # Keep exact link lines and a small amount of adjacent prose, not just the start of the file.
         for line in section[1:]:
             stripped = line.strip()
             if not stripped:
                 continue
             is_link = bool(re.search(r"\[[^\]]+\]\(https?://[^)]+\)", stripped))
             is_list = stripped.startswith(("- ", "* ", "+ "))
-            if is_link or is_list:
+            # A sentence is useful for prose sections; link/list lines are preferred for catalogs.
+            if is_link or is_list or not entries:
                 entries.append(stripped)
-            if len(entries) >= 2:
+            if len(entries) >= 3:
                 break
-        if not entries:
-            continue
-        block = "\n".join([heading, *entries])
-        if len(block) > remaining:
-            break
-        sampled.append(block)
-        remaining -= len(block) + 2
-        if remaining <= 300:
-            break
+        if entries:
+            block = "\n".join([heading, *entries])
+            blocks.append(block[:420])
 
-    omitted_note = "\n\n[README가 길어 각 섹션 제목과 대표 링크 일부만 발췌했습니다. 아래 목록은 전체 목록이 아닙니다.]\n"
-    pieces = [intro.rstrip(), omitted_note.rstrip(), *sampled]
-    return "\n\n".join(pieces)[:max_chars]
+    base = intro
+    note = "[README가 길어 섹션 전반의 대표 항목을 발췌했습니다. 전체 목록을 의미하지 않습니다.]"
+    remaining = max_chars - len(base) - len(note) - 8
+    if remaining <= 0 or not blocks:
+        return (base + "\n\n" + note)[:max_chars]
+
+    # Select evenly spaced sections so later categories do not disappear from the evidence.
+    average_block_budget = 330
+    capacity = max(1, min(len(blocks), remaining // average_block_budget))
+    if capacity == 1:
+        indices = [len(blocks) // 2]
+    else:
+        indices = sorted({
+            round(i * (len(blocks) - 1) / (capacity - 1))
+            for i in range(capacity)
+        })
+
+    selected = [blocks[index] for index in indices]
+    output = [base, note]
+    used = sum(len(part) for part in output) + 4
+    for block in selected:
+        if used + len(block) + 2 > max_chars:
+            continue
+        output.append(block)
+        used += len(block) + 2
+    return "\n\n".join(part for part in output if part)[:max_chars]
+
+
+def _code_excerpt(path: str, text: str, max_chars: int) -> str:
+    """Keep definitions from several parts of large files instead of only the first lines."""
+    if len(text) <= max_chars:
+        return text
+
+    lines = text.splitlines()
+    if not lines:
+        return text[:max_chars]
+
+    definition_re = re.compile(
+        r"^\s*(?:class\s+\w+|struct\s+\w+|enum\s+\w+|"
+        r"(?:async\s+)?def\s+\w+|fn\s+\w+|func\s+\w+|"
+        r"(?:TF|TFE)_[A-Za-z0-9_]+\s*\(|"
+        r"(?:public|private|protected|static)\s+.*\(|"
+        r"if\s+__name__\s*==)"
+    )
+    starts = [index for index, line in enumerate(lines) if definition_re.search(line)]
+    if not starts:
+        head_budget = int(max_chars * 0.55)
+        tail_budget = max_chars - head_budget - 60
+        return (
+            text[:head_budget]
+            + "\n\n[중간 코드 생략]\n\n"
+            + text[-tail_budget:]
+        )
+
+    # Reserve space for the file start and end, then sample definition neighborhoods across the file.
+    windows: list[tuple[int, int]] = [(0, min(len(lines), max(8, int(len(lines) * 0.10))))]
+    if len(starts) > 1:
+        target_count = 8
+        indexes = sorted({
+            round(i * (len(starts) - 1) / max(1, target_count - 1))
+            for i in range(min(target_count, len(starts)))
+        })
+        for idx in indexes:
+            center = starts[idx]
+            windows.append((max(0, center - 4), min(len(lines), center + 14)))
+    windows.append((max(0, len(lines) - max(8, int(len(lines) * 0.08))), len(lines)))
+
+    merged: list[tuple[int, int]] = []
+    for left, right in sorted(windows):
+        if merged and left <= merged[-1][1] + 2:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], right))
+        else:
+            merged.append((left, right))
+
+    output: list[str] = []
+    used = 0
+    for left, right in merged:
+        block = "\n".join(lines[left:right])
+        marker = "\n[...]\n" if output else ""
+        if used + len(marker) + len(block) > max_chars:
+            allowance = max_chars - used - len(marker)
+            if allowance > 200:
+                output.extend([marker, block[:allowance]])
+                used = max_chars
+            break
+        if marker:
+            output.append(marker)
+            used += len(marker)
+        output.append(block)
+        used += len(block)
+    if not output:
+        return text[:max_chars]
+    return "".join(output)[:max_chars]
 
 
 def _source_excerpt(path: str, text: str, max_chars: int) -> str:
-    """Use a larger, stratified excerpt for README catalogs and focused excerpts for other files."""
+    """Use broader excerpts for long docs and stratified excerpts for source code."""
     lower = path.lower()
     name = lower.rsplit("/", 1)[-1]
+    code_extensions = (".py", ".ts", ".tsx", ".js", ".mjs", ".go", ".rs", ".java", ".c", ".cc", ".cpp", ".h")
     if "/" not in path and name in {"readme.md", "readme.rst", "readme"}:
         return _catalog_readme_excerpt(text, max_chars)
+    if lower.endswith(code_extensions):
+        return _code_excerpt(path, text, max_chars)
     if len(text) <= max_chars:
         return text
     if name in {"security.md", "contributing.md", "architecture.md"}:
-        # Preserve both the opening context and the final reporting/instructions section.
-        head = int(max_chars * 0.7)
+        head = int(max_chars * 0.65)
         tail = max_chars - head
         return text[:head] + "\n\n[중간 내용 일부 생략]\n\n" + text[-tail:]
     return text[:max_chars]
-
 
 def discover_github_candidates(limit: int | None = None) -> dict:
     """전 분야의 인기 저장소와 최근 활동 저장소를 나눠 수집하고 JSON으로 저장합니다."""
