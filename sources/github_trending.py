@@ -562,6 +562,10 @@ def fetch_repository_context(candidate: dict) -> dict:
 
     # Keep the writer prompt bounded. A long catalog README receives a sampled excerpt
     # from across its sections; code/config files receive focused excerpts.
+    try:
+        writer_context_limit = max(12_000, int(os.getenv("OPEN_SOURCE_WRITER_CONTEXT_CHARS", "30000")))
+    except ValueError:
+        writer_context_limit = 30_000
     used_chars = 0
     for path in selected_paths:
         url = f"https://raw.githubusercontent.com/{full_name}/{quote(branch, safe='')}/{quote(path, safe='/')}"
@@ -579,7 +583,7 @@ def fetch_repository_context(candidate: dict) -> dict:
             file_budget = 2_600
         else:
             file_budget = 2_600
-        remaining_budget = 42_000 - used_chars
+        remaining_budget = writer_context_limit - used_chars
         if remaining_budget < 700:
             break
         file_budget = min(file_budget, remaining_budget)
