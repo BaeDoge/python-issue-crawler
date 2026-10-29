@@ -138,7 +138,11 @@ def _writer_prompt(spec: TopicSpec, chosen_title: str, context_text: str) -> str
         + "\n\n(섹션 헤더는 위와 똑같이 '## 섹션명'으로 쓰고, 모든 섹션을 빠짐없이 쓸 것)"
     )
 
-def _deterministic_check(spec: TopicSpec, repository_paths: list[str] | None = None):
+def _deterministic_check(
+    spec: TopicSpec,
+    repository_paths: list[str] | None = None,
+    repository_tree_complete: bool = False,
+):
     def check(draft_raw: str) -> dict:
         data = parse_note_text(draft_raw, spec.section_names)
         if not data:
@@ -181,7 +185,7 @@ def _deterministic_check(spec: TopicSpec, repository_paths: list[str] | None = N
                 f"본문이 장문 기준보다 짧음(현재 {body_chars}자, 최소 {spec.min_total_chars}자). "
                 "배경·기술적 동작 원리·구체적인 활용 사례·한계와 위험을 근거 중심으로 확장할 것"
             )
-        if repository_paths:
+        if repository_paths and repository_tree_complete:
             all_body_text = "\n".join(
                 [title, data.get("summary", "") or ""]
                 + [(sections.get(name) or "") for name in spec.section_names]
@@ -403,7 +407,9 @@ def run_topic(spec: TopicSpec) -> dict:
         initial_prompt=prompt,
         critique_instructions=f"아래 '{spec.label}' 초안을 다음 기준으로 평가해라: {spec.reviewer_checklist}",
         expected_output=expected,
-        deterministic_check_fn=_deterministic_check(spec, ctx.get("tree_paths")),
+        deterministic_check_fn=_deterministic_check(
+            spec, ctx.get("tree_paths"), bool(ctx.get("tree_complete", False))
+        ),
         max_rounds=spec.max_rounds,
         log_prefix=f"[{spec.key}] ",
         stop_on_repeated_issues=bool(spec.long_form_guidance),
