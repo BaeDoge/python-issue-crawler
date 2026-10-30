@@ -139,9 +139,12 @@ def detect_foreign_language_mixing(text: str) -> list[str]:
     """
     prose = _mask_non_prose(text)
     has_japanese_kana = re.search(r"[\u3040-\u30ff\uff66-\uff9f]", prose) is not None
-    has_chinese_sentence = any(
-        len(run) >= 4 and sum(char in _CHINESE_FUNCTION_CHARS for char in run) >= 2
-        for run in re.findall(r"[\u3400-\u4dbf\u4e00-\u9fff]+", prose)
+    han_chars = re.findall(r"[\u3400-\u4dbf\u4e00-\u9fff]", prose)
+    # Chinese prose commonly contains spaces; count grammatical markers across the
+    # sentence rather than requiring one uninterrupted Han-character run.
+    has_chinese_sentence = (
+        len(han_chars) >= 8
+        and sum(char in _CHINESE_FUNCTION_CHARS for char in han_chars) >= 3
     )
     if has_japanese_kana or has_chinese_sentence:
         return ["한국어 본문에 일본어/중국어 문장이 섞여 있음 — 해당 문장을 자연스러운 한국어로 바꿀 것"]
