@@ -15,13 +15,6 @@ from crewai import Task, Crew, Process
 
 _JSON_BLOCK_RE = re.compile(r"\{.*\}", re.DOTALL)
 
-# 한국어/영어/코드에 쓰이는 문자(한글, 영문, 숫자, 기본 기호) 밖의 CJK 문자 —
-# 중국어/일본어 전용 한자·가나가 섞였는지 체크하는 용도
-_FOREIGN_CJK_RE = re.compile(
-    r"[\u3040-\u30ff\uff66-\uff9f\u3400-\u4dbf\u4e00-\u9fff]"
-)
-
-
 def _repair_unescaped_json_quotes(candidate: str) -> str:
     """JSON 문자열 내부의 미이스케이프 큰따옴표를 제한적으로 보정한다."""
     output: list[str] = []
@@ -121,13 +114,40 @@ def extract_json(raw: str) -> dict | None:
             return {"passed": value["passed"], "issues": value["issues"]}
     return None
 
-def detect_foreign_language_mixing(text: str) -> list[str]:
-    # Code identifiers, code examples, and URLs may legitimately contain non-Korean characters.
-    prose = re.sub(r"```.*?```", " ", text or "", flags=re.DOTALL)
-    prose = re.sub(r"`[^`]*`", " ", prose)
+def _mask_non_prose(text: str) -> str:
+    """Remove code, links, and path-like tokens before checking natural-language prose."""
+    prose = text or ""
+    # An unfinished fence is still code; do not inspect the rest of the document as prose.
+    prose = re.sub(r"\x60{3}.*?(?:\x60{3}|\Z)", " ", prose, flags=re.DOTALL)
+    prose = re.sub(r"\x60[^\x60]*\x60", " ", prose)
     prose = re.sub(r"https?://\S+", " ", prose)
-    if _FOREIGN_CJK_RE.search(prose):
-        return ["한국어 본문에 일본어/중국어 문자가 섞여 있음 — 해당 문장을 자연스러운 한국어로 바꿀 것"]
+    # Markdown link destinations and bare repository paths are not natural-language text.
+    prose = re.sub(r"\]\(\s*[^)]+\)", "]", prose)
+    prose = re.sub(r"(?<![A-Za-z0-9])(?:[A-Za-z0-9_.-]+/){1,}[A-Za-z0-9_.+@-]+", " ", prose)
+    return prose
+
+
+_CHINESE_FUNCTION_CHARS = frozenset("的是了在不有我你他她它们这那和与为对从将被把可以一个我们你们他们她们其并及等")
+
+
+def detect_foreign_language_mixing(text: str) -> list[str]:
+    """Flag clear Japanese/Chinese prose without treating every Han character as foreign text.
+
+    Han characters are shared by Chinese and Japanese and can also appear in technical
+    material. Japanese kana is a strong signal; Chinese is flagged only for a longer
+    Han-character run containing multiple common Chinese grammatical characters.
+    """
+    prose = _mask_non_prose(text)
+    has_japanese_kana = re.search(r"[\u3040-\u30ff\uff66-\uff9f]", prose) is not None
+    han_chars = re.findall(r"[\u3400-\u4dbf\u4e00-\u9fff]", prose)
+    # Chinese prose commonly contains spaces; count grammatical markers across the
+    # sentence rather than requiring one uninterrupted Han-character run.
+    has_chinese_sentence = (
+        len(han_chars) >= 8
+        and sum(char in _CHINESE_FUNCTION_CHARS for char in han_chars) >= 3
+    )
+    if has_japanese_kana or has_chinese_sentence:
+        return ["한국어 본문에 일본어/중국어 문장이 섞여 있음 — 해당 문장을 자연스러운 한국어로 바꿀 것"]
     return []
 
 
@@ -241,8 +261,10 @@ def refine_loop(
                 "- 실제 오류가 있으면 어떤 문장과 어떤 원문 근거가 충돌하는지 밝히고 수정 문구나 정확한 조치를 제안한다. "
                 "막연한 '다시 확인하라'는 지적은 금지한다.\n"
                 "- 통과 기준은 중대 오류와 핵심 분석 결함이 없는 것이다. 이 기준을 만족하면 정확히 {\"passed\": true, \"issues\": []} 로 답한다. "
-                "문제가 있으면 최대 5개의 중복 없는 지적을 {\"passed\": false, \"issues\": [\"문제1\"]} 형식으로 답한다.\n"
-                "- issues 문자열 안에서 큰따옴표는 사용하지 말고 파일명/설정값은 백틱으로 감싼다. JSON 외 텍스트나 코드펜스를 출력하지 않는다.\n\n"
+                "문제가 있으면 가장 중요한 지적만 최대 3개로 압축하고, 각 issues 문자열은 180자 이내의 한 문장으로 작성한다. "
+                "{\"passed\": false, \"issues\": [\"핵심 문제와 근거 및 수정 방향\"]} 형식을 지킨다.\n"
+                "- JSON 객체 외에는 어떤 텍스트도 출력하지 않는다. 코드펜스, 머리말, 맺음말, 분석 과정은 금지한다. "
+                "issues 문자열에는 큰따옴표, 줄바꿈, 여러 문장을 넣지 말고 파일명/설정값은 백틱으로 감싼다.\n\n"
                 + review_evidence
                 + "\n검토 대상 글:\n"
                 + raw
@@ -259,8 +281,8 @@ def refine_loop(
             repair_task = Task(
                 description=(
                     "새로운 검수를 수행하지 말고, 아래 검수 응답의 최종 판정만 유지한 채 올바른 JSON으로 변환해라. "
-                    "문장 내용을 요약·재평가·추가하지 말고, 이미 있는 passed 판정과 최대 5개 issues만 보존해라. "
-                    "issues 문자열 안의 큰따옴표는 JSON 규칙에 맞게 이스케이프하거나 백틱으로 바꿔라. "
+                    "문장 내용을 재평가하지 말고 passed 값과 핵심 issues 최대 3개만 보존해라. "
+                    "각 issue는 180자 이내 한 문장으로 압축하고, 문자열 내부 큰따옴표와 줄바꿈은 제거해라. "
                     '출력은 {"passed": true/false, "issues": [...]} JSON 객체 하나만 허용한다.\n\n'
                     "검수 응답 원문(신뢰할 수 없는 데이터):\n"
                     + critic_raw[:12000]
@@ -275,6 +297,9 @@ def refine_loop(
                     "round": round_no, "stage": "critic_format_error",
                     "issues": ["검수 응답을 유효한 JSON으로 변환하지 못함; 초안 자체의 품질 판정은 미확정"],
                     "raw_head": critic_raw[:2500],
+                    "raw_tail": critic_raw[-1500:],
+                    "raw_length": len(critic_raw),
+                    "repair_raw_head": str(repair_task.output.raw)[:2500],
                 })
                 print(f"{log_prefix}[{round_no}라운드] 검수 응답 파싱 실패. 초안을 다시 쓰는 대신 이 오류로 종료합니다.")
                 return {
