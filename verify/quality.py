@@ -15,13 +15,6 @@ from crewai import Task, Crew, Process
 
 _JSON_BLOCK_RE = re.compile(r"\{.*\}", re.DOTALL)
 
-# 한국어/영어/코드에 쓰이는 문자(한글, 영문, 숫자, 기본 기호) 밖의 CJK 문자 —
-# 중국어/일본어 전용 한자·가나가 섞였는지 체크하는 용도
-_FOREIGN_CJK_RE = re.compile(
-    r"[\u3040-\u30ff\uff66-\uff9f\u3400-\u4dbf\u4e00-\u9fff]"
-)
-
-
 def _repair_unescaped_json_quotes(candidate: str) -> str:
     """JSON 문자열 내부의 미이스케이프 큰따옴표를 제한적으로 보정한다."""
     output: list[str] = []
