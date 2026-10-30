@@ -29,6 +29,9 @@ class ForeignLanguageMixingTests(unittest.TestCase):
     def test_chinese_prose_is_detected(self):
         self.assertTrue(detect_foreign_language_mixing("这个项目是一个用于处理数据的工具。"))
 
+    def test_chinese_prose_with_spaces_is_detected(self):
+        self.assertTrue(detect_foreign_language_mixing("这个项目 是一个 用于处理 数据的工具。"))
+
     def test_short_han_terms_are_not_detected(self):
         self.assertEqual(detect_foreign_language_mixing("중국어 용어인 中国과 日本을 비교합니다."), [])
 
