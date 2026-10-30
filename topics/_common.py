@@ -24,7 +24,7 @@ from crewai import Task, Crew, Process
 import history
 from config import OUTPUT_DIR, LOG_DIR, QUALITY_ATTEMPTS, PUBLISH_TARGETS
 from crew_builder import build_scout_agent, build_writer_agent, build_reviewer_agent
-from verify.quality import refine_loop, detect_foreign_language_mixing
+from verify.quality import refine_loop, detect_foreign_language_mixing, build_revision_prompt
 from verify.repository_paths import find_unverified_repository_paths as _find_unverified_repository_paths
 from topics.note_format import parse_note_text
 from output.note import render_note, render_note_en, _FENCE_RE
@@ -344,15 +344,9 @@ def _refine_with_retries(*, writer_agent, critic_agent, initial_prompt: str,
 
         previous_attempt_issues = issues
         if attempt < attempts:
-            feedback = "\n".join(f"- {issue}" for issue in issues)
-            if not feedback:
-                feedback = "- 이전 초안이 품질 기준을 통과하지 못한 원인을 구체적으로 다시 점검할 것"
-            retry_prompt = (
-                f"{initial_prompt}\n\n"
-                f"--- 이전 품질 검수 시도 {attempt} 미통과 ---\n"
-                "같은 소재를 유지하되 이전 초안을 그대로 반복하지 말고, 아래 지적을 해결한 새 초안을 작성할 것. "
-                "이미 충족한 항목은 다시 늘리지 말고, 확인되지 않은 사실을 추가하지 말 것.\n"
-                f"{feedback}"
+            retry_prompt = build_revision_prompt(
+                initial_prompt, str(current.get("raw", "")), issues,
+                stage=f"품질 검수 재시도 {attempt}",
             )
             print(f"{log_prefix}시도 {attempt} 미통과. 지적 사항을 반영해 새 검수 사이클을 시작합니다.")
 
