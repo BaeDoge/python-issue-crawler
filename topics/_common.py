@@ -344,9 +344,6 @@ def _refine_with_retries(*, writer_agent, critic_agent, initial_prompt: str,
 
         previous_attempt_issues = issues
         if attempt < attempts:
-            feedback = "\n".join(f"- {issue}" for issue in issues)
-            if not feedback:
-                feedback = "- 이전 초안이 품질 기준을 통과하지 못한 원인을 구체적으로 다시 점검할 것"
             retry_prompt = build_revision_prompt(
                 initial_prompt, str(current.get("raw", "")), issues,
                 stage=f"품질 검수 재시도 {attempt}",
