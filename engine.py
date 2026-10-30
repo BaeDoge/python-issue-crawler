@@ -16,7 +16,6 @@
     uv run pipeline/engine.py --publish-draft output_files/troubleshooting/xxx.mdx
 
 자동 반복 실행(하루 1회)은 scheduler.py를 쓰세요:
-    uv run pipeline/scheduler.py
 
 발행 규칙:
 - 검증을 최종 통과하지 못한 글은 자동 발행하지 않고 로컬에만 남깁니다.
@@ -89,7 +88,7 @@ def run_one(topic_key: str, publish: bool) -> dict:
 
     pub = publish_note(result["path"], title=result.get("title", ""), content_type=topic_key,
                        image_files=result.get("image_files"))
-    print(f"[{topic_key}] 발행 결과: {pub['message']}")
+    print(f"[{topic_key}] 발행 결과:\n{pub['message']}")
     result["publish"] = pub
     return result
 
@@ -109,7 +108,7 @@ def publish_draft(mdx_path: str) -> dict:
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
     pub = publish_note(path, title=meta.get("title", ""), content_type=meta.get("content_type", "note"),
                        image_files=meta.get("image_files", []))
-    print(f"발행 결과: {pub['message']}")
+    print(f"발행 결과:\n{pub['message']}")
     return pub
 
 
@@ -180,6 +179,7 @@ def main():
                 "path": str(result.get("path", "")),
                 "reason": result.get("reason", ""),
                 "publish_message": publish_result.get("message", ""),
+                "publish_targets": publish_result.get("targets", []),
                 "held": held,
             })
 
@@ -216,12 +216,20 @@ def main():
             status = "생성/검수 완료(발행 생략)"
         else:
             status = "성공"
-        detail = item["title"] or item["reason"] or item["publish_message"] or item["path"]
-        print(f"- [{item['topic']}] {item['index']}/{args.count}: {status} {detail}")
+
+        print(f"- [{item['topic']}] {item['index']}/{args.count}: {status}")
+        if item["publish_attempted"] and not item["publish_ok"]:
+            # Do not hide the actual error behind the article title.
+            print(item["publish_message"] or "발행 실패: 상세 메시지가 반환되지 않았습니다.")
+        else:
+            detail = item["title"] or item["reason"] or item["path"]
+            if detail:
+                print(f"  상세: {detail}")
     print("=" * 60)
 
     if failed:
         raise SystemExit(1)
+
 
 if __name__ == "__main__":
     main()
