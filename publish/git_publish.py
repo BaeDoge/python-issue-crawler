@@ -345,8 +345,11 @@ def publish_note(
     category = {
         "algorithm": "algorithm",
         "troubleshooting": "troubleshooting",
-    }.get((content_type or "troubleshooting").strip().lower(), "troubleshooting")
-
+        "opensource": "opensource",
+    }.get(
+        (content_type or "troubleshooting").strip().lower(),
+        "troubleshooting"
+    )
     if not PUBLISH_TARGETS:
         return {
             "ok": False, "committed": False, "pushed": False, "targets": [],
