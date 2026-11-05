@@ -28,8 +28,9 @@ class PaperSourceTests(unittest.TestCase):
         self.assertEqual(_extract_code_links("No official implementation is linked."), [])
 
     def test_extracts_explicit_github_url(self):
+        html = '<p>Code: <a href="https://github.com/example/research-code">GitHub repository</a></p>'
         self.assertEqual(
-            _extract_code_links("Code: https://github.com/example/research-code."),
+            _extract_code_links(html),
             ["https://github.com/example/research-code"],
         )
 
