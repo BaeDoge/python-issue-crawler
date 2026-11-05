@@ -114,12 +114,12 @@ def _extract_code_links(text: str) -> list[str]:
     unique, seen = [], set()
     for anchor in soup.find_all("a", href=True):
         url = anchor.get("href", "").strip()
-        if not re.match(r"https?://github\\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", url, re.I):
+        if not re.match(r"https?://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", url, re.I):
             continue
         surrounding = anchor.get_text(" ", strip=True)
         if anchor.parent:
             surrounding += " " + anchor.parent.get_text(" ", strip=True)[:300]
-        if not re.search(r"\\b(code|implementation|github|repository|source code)\\b", surrounding, re.I):
+        if not re.search(r"\b(code|implementation|github|repository|source code)\b", surrounding, re.I):
             continue
         clean = url.rstrip(".,);]")
         if clean.casefold() not in seen:
