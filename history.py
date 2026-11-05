@@ -62,3 +62,12 @@ def mark_used(topic_key: str, link: str | None, title: str) -> None:
     })
     HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
     HISTORY_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def used_links(topic_key: str) -> set[str]:
+    """Return canonical source links already handled for a topic."""
+    return {
+        _canonical_link(item.get("link"))
+        for item in _load().get(topic_key, [])
+        if _canonical_link(item.get("link"))
+    }
