@@ -34,9 +34,9 @@ class TroubleshootingDiscoveryTests(unittest.TestCase):
     @patch.object(web, "TROUBLESHOOTING_PER_SEED", 1)
     @patch.object(web.random, "shuffle", lambda items: None)
     @patch.object(web, "stackoverflow_common_errors", return_value=[])
-    @patch.object(web, "stackoverflow_for_seed", return_value=[
+    @patch.object(web, "stackoverflow_for_seed", side_effect=[[], [
         {"title": "TypeError: object is not callable", "link": "https://stackoverflow.com/questions/9/typeerror"}
-    ])
+    ]])
     def test_relaxes_filters_after_initial_seed(self, search, _broad):
         web.stackoverflow_seed_candidates()
         self.assertEqual(search.call_args_list[0].kwargs["min_score"], web.TROUBLESHOOTING_MIN_SCORE)
