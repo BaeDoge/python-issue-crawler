@@ -109,15 +109,23 @@ def _arxiv_html_url(url: str) -> str | None:
 
 
 def _extract_code_links(text: str) -> list[str]:
-    urls = re.findall(r"https?://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", text or "", re.I)
+    """Only retain GitHub links explicitly labelled as code/implementation resources."""
+    soup = BeautifulSoup(text or "", "html.parser")
     unique, seen = [], set()
-    for url in urls:
+    for anchor in soup.find_all("a", href=True):
+        url = anchor.get("href", "").strip()
+        if not re.match(r"https?://github\\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", url, re.I):
+            continue
+        surrounding = anchor.get_text(" ", strip=True)
+        if anchor.parent:
+            surrounding += " " + anchor.parent.get_text(" ", strip=True)[:300]
+        if not re.search(r"\\b(code|implementation|github|repository|source code)\\b", surrounding, re.I):
+            continue
         clean = url.rstrip(".,);]")
         if clean.casefold() not in seen:
             seen.add(clean.casefold())
             unique.append(clean)
     return unique[:12]
-
 
 def build_context(chosen: dict) -> dict:
     abstract = (chosen.get("abstract") or "").strip()
@@ -141,12 +149,13 @@ def build_context(chosen: dict) -> dict:
         parts.extend(["", f"공개 PDF: {chosen['pdf_url']}"])
         sources.append({"platform": "Open Access PDF", "title": "논문 PDF", "url": chosen["pdf_url"], "author": None})
 
-    html_url = _arxiv_html_url(landing) or (landing if landing.startswith("https://") and "doi.org/" not in landing else None)
+    arxiv_html_url = _arxiv_html_url(landing)
+    html_url = arxiv_html_url or (landing if landing.startswith("https://") and "doi.org/" not in landing else None)
     if html_url:
         html_text = net.get_text(html_url, timeout=25)
         if html_text:
             full_text = BeautifulSoup(html_text, "html.parser").get_text(" ", strip=True)
-            if len(full_text) > 1000:
+            if arxiv_html_url and len(full_text) > 1000:
                 parts.extend(["", "arXiv HTML 원문 발췌:", full_text[:14000]])
                 evidence.append(full_text[:14000])
                 sources.append({"platform": "arXiv HTML 원문", "title": chosen["title"], "url": html_url, "author": None})
