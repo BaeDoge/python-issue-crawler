@@ -75,11 +75,12 @@ def discover_candidates() -> list[dict]:
     """Collect domestic-affiliated and international research, deduplicated by DOI/URL."""
     collected: dict[str, dict] = {}
     # Balance a bounded search batch across English and Korean queries.
-    selected_terms = SEARCH_TERMS[:6] + SEARCH_TERMS[12:18]
+    # Keep the request batch balanced but modest; net.request retries a single 429 response.
+    selected_terms = SEARCH_TERMS[:4] + SEARCH_TERMS[12:16]
     for index, term in enumerate(selected_terms):
         params = {
             "search": term,
-            "filter": "type:article|preprint|proceedings-article,is_retracted:false,from_publication_date:2019-01-01",
+            "filter": "type:article|preprint,is_retracted:false,from_publication_date:2019-01-01",
             "per-page": 20,
             "sort": "publication_date:desc",
         }
@@ -95,8 +96,9 @@ def discover_candidates() -> list[dict]:
             previous = collected.get(key)
             if previous is None or item["cited_by_count"] > previous["cited_by_count"]:
                 collected[key] = item
-        if index and index % 4 == 0:
-            time.sleep(0.15)
+        # Avoid sending a burst of anonymous requests to OpenAlex.
+        if index < len(selected_terms) - 1:
+            time.sleep(1.0)
 
     candidates = list(collected.values())
     candidates.sort(key=lambda p: (p.get("publication_date") or "", p.get("cited_by_count", 0)), reverse=True)

@@ -1,4 +1,4 @@
-""""
+"""
 공용 HTTP 계층 — 모든 소스 모듈이 이걸 통해 네트워크에 접근합니다.
 ========================================================================
 이전 버전의 문제 두 가지를 고치기 위한 모듈입니다.
@@ -16,6 +16,7 @@
 """
 
 import re
+import time
 from urllib.parse import urlparse
 
 import requests
@@ -52,15 +53,29 @@ def request(method: str, url: str, *, headers: dict | None = None, json_body=Non
     h = {"User-Agent": BROWSER_UA}
     if headers:
         h.update(headers)
-    try:
-        r = (session or requests).request(
-            method, url, headers=h, json=json_body, params=params, timeout=timeout
-        )
-    except requests.RequestException as e:
-        _report(url, f"{type(e).__name__}: {str(e)[:220]}", quiet, record)
-        return None
+    client = session or requests
+    for attempt in range(2):
+        try:
+            r = client.request(
+                method, url, headers=h, json=json_body, params=params, timeout=timeout
+            )
+        except requests.RequestException as e:
+            _report(url, f"{type(e).__name__}: {str(e)[:220]}", quiet, record)
+            return None
+        if r.status_code == 429 and attempt == 0:
+            retry_after = r.headers.get("Retry-After", "")
+            match = re.search(r"retry in (\d+)s", r.text or "", re.I)
+            try:
+                delay = int(retry_after) if retry_after else (int(match.group(1)) if match else 5)
+            except (TypeError, ValueError):
+                delay = 5
+            delay = max(1, min(delay + 1, 60))
+            print(f"[네트워크] {urlparse(url).netloc}: 요청 제한(429), {delay}초 후 1회 재시도")
+            time.sleep(delay)
+            continue
+        break
     if r.status_code >= 400:
-        snippet = re.sub(r"\\s+", " ", r.text[:160])
+        snippet = re.sub(r"\s+", " ", r.text[:160])
         _report(url, f"HTTP {r.status_code} {r.reason} — {snippet}", quiet, record)
         return None
     return r
