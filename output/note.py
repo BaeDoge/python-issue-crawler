@@ -190,7 +190,8 @@ def render_note_en(
     )
     body_parts = []
     for header, content in sections.items():
-        block = f"## {header}\n\n{normalize_code_fences(content)}\n"
+        safe_content, _ = normalize_mdx_text(normalize_code_fences(content))
+        block = f"## {header}\n\n{safe_content}\n"
         for img in section_images.get(header, []):
             block += f"\n![{img['alt']}]({img['url']})\n"
         body_parts.append(block)
