@@ -37,7 +37,7 @@ from publish.git_publish import publish_note
 
 
 def _parse_args():
-    parser = argparse.ArgumentParser(description="트러블슈팅/알고리즘 노트를 생성하고 설정된 저장소에 발행합니다")
+    parser = argparse.ArgumentParser(description="기술 콘텐츠를 생성하고 설정된 저장소에 발행합니다")
     parser.add_argument("--topic", choices=[*TOPICS.keys(), "both", "all"], help="생성할 주제 (생략하면 메뉴가 뜸)")
     parser.add_argument("--discover-opensource", action="store_true", help="GitHub 인기/최근 활동 후보만 탐색하고 목록을 출력 (글 생성/발행 안 함)")
     parser.add_argument("--count", type=int, default=1,
@@ -139,7 +139,7 @@ def main():
     topic_key = args.topic
     if not topic_key:
         if not sys.stdin.isatty():
-            print("⚠️ 비대화형 환경에서는 --topic을 지정해주세요 (troubleshooting | algorithm | both)")
+            print("⚠️ 비대화형 환경에서는 --topic을 지정해주세요 (troubleshooting | algorithm | opensource | paper-review | both | all)")
             sys.exit(1)
         topic_key = _resolve_via_inquirer()
 
