@@ -104,12 +104,12 @@ def discover_candidates() -> list[dict]:
 
 
 def _arxiv_html_url(url: str) -> str | None:
-    match = re.search(r"arxiv\\.org/(?:abs|pdf)/([0-9.]+(?:v[0-9]+)?)", url or "")
+    match = re.search(r"arxiv\.org/(?:abs|pdf)/([0-9.]+(?:v[0-9]+)?)", url or "")
     return f"https://arxiv.org/html/{match.group(1)}" if match else None
 
 
 def _extract_code_links(text: str) -> list[str]:
-    urls = re.findall(r"https?://github\\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", text or "", re.I)
+    urls = re.findall(r"https?://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", text or "", re.I)
     unique, seen = [], set()
     for url in urls:
         clean = url.rstrip(".,);]")
@@ -166,7 +166,7 @@ def build_context(chosen: dict) -> dict:
         "- 코드 링크가 확인되지 않으면 공식 구현 공개 여부를 확인할 수 없다고 명시할 것.",
     ])
     return {
-        "context_text": "\\n".join(parts), "review_context": "\\n".join(evidence),
+        "context_text": "\n".join(parts), "review_context": "\n".join(evidence),
         "source_url": landing, "sources": sources, "images": [], "third_party": False,
         "analysis_source_count": len(evidence),
     }
