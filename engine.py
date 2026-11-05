@@ -5,7 +5,8 @@
     uv run pipeline/engine.py                       # 메뉴에서 선택
     uv run pipeline/engine.py --topic troubleshooting
     uv run pipeline/engine.py --topic algorithm
-    uv run pipeline/engine.py --topic both           # 트러블슈팅 + 알고리즘\n    uv run engine.py --topic all            # 등록된 모든 주제 한 편씩
+    uv run pipeline/engine.py --topic both           # 트러블슈팅 + 알고리즘
+    uv run pipeline/engine.py --topic all            # 등록된 모든 주제 한 편씩
     uv run pipeline/engine.py --topic algorithm --count 3  # 알고리즘 3편 생성
     uv run pipeline/engine.py --topic both --count 2      # 각 주제 2편씩, 총 4편
 
