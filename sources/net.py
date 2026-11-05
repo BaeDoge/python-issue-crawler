@@ -64,7 +64,7 @@ def request(method: str, url: str, *, headers: dict | None = None, json_body=Non
             return None
         if r.status_code == 429 and attempt == 0:
             retry_after = r.headers.get("Retry-After", "")
-            match = re.search(r"retry in (\\d+)s", r.text or "", re.I)
+            match = re.search(r"retry in (\d+)s", r.text or "", re.I)
             try:
                 delay = int(retry_after) if retry_after else (int(match.group(1)) if match else 5)
             except (TypeError, ValueError):
