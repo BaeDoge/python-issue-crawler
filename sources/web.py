@@ -113,11 +113,10 @@ def _stackexchange_get(url: str) -> list:
 
 def stackoverflow_common_errors(limit: int = 6) -> list:
     """채택 답변이 있는 'error' 질문 — 원인+해결이 둘 다 확보되는 소재."""
-    fromdate = int(time.time()) - 365 * 24 * 3600 * TROUBLESHOOTING_MAX_AGE_YEARS
     url = (
         "https://api.stackexchange.com/2.3/search/advanced"
         "?order=desc&sort=hot&q=error&accepted=True&answers=1&tagged=python&nottagged=" + urllib.parse.quote(TROUBLESHOOTING_EXCLUDED_TAGS) + "&min=10"
-        f"&fromdate={fromdate}&site=stackoverflow&pagesize={limit}&filter=withbody"
+        f"&site=stackoverflow&pagesize={limit}&filter=withbody"
     )
     items = _stackexchange_get(url)
     out = []
