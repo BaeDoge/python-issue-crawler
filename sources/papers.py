@@ -17,7 +17,7 @@ SEARCH_TERMS = [
     "인공지능", "대규모 언어 모델", "검색 증강 생성", "멀티모달",
     "컴퓨터 비전", "자연어 처리", "소프트웨어 공학", "데이터베이스",
 ]
-MAX_PAPERS = 40
+MAX_PAPERS = 80
 MIN_ABSTRACT_CHARS = 180
 
 
@@ -75,7 +75,7 @@ def discover_candidates() -> list[dict]:
     for index, term in enumerate(SEARCH_TERMS):
         params = {
             "search": term,
-            "filter": "type:article,is_retracted:false,from_publication_date:2019-01-01",
+            "filter": "type:article|preprint|proceedings-article,is_retracted:false,from_publication_date:2019-01-01",
             "per-page": 20,
             "sort": "publication_date:desc",
         }
@@ -91,8 +91,6 @@ def discover_candidates() -> list[dict]:
             previous = collected.get(key)
             if previous is None or item["cited_by_count"] > previous["cited_by_count"]:
                 collected[key] = item
-        if len(collected) >= MAX_PAPERS:
-            break
         if index and index % 4 == 0:
             time.sleep(0.15)
 
@@ -141,7 +139,7 @@ def build_context(chosen: dict) -> dict:
         parts.extend(["", f"공개 PDF: {chosen['pdf_url']}"])
         sources.append({"platform": "Open Access PDF", "title": "논문 PDF", "url": chosen["pdf_url"], "author": None})
 
-    html_url = _arxiv_html_url(landing)
+    html_url = _arxiv_html_url(landing) or (landing if landing.startswith("https://") and "doi.org/" not in landing else None)
     if html_url:
         html_text = net.get_text(html_url, timeout=25)
         if html_text:
