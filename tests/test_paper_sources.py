@@ -1,6 +1,8 @@
 import unittest
 
-from sources.papers import _abstract_from_index, _candidate, _extract_code_links, _arxiv_html_url
+from unittest.mock import patch
+
+from sources.papers import _abstract_from_index, _candidate, _extract_code_links, _arxiv_html_url, discover_candidates
 
 
 class PaperSourceTests(unittest.TestCase):
@@ -39,6 +41,18 @@ class PaperSourceTests(unittest.TestCase):
             _arxiv_html_url("https://arxiv.org/abs/2401.12345v2"),
             "https://arxiv.org/html/2401.12345v2",
         )
+
+
+    @patch("sources.papers.time.sleep")
+    @patch("sources.papers.net.get_json", return_value={"results": []})
+    def test_discovery_uses_supported_openalex_types(self, mock_get_json, mock_sleep):
+        discover_candidates()
+        self.assertGreater(mock_get_json.call_count, 0)
+        for call in mock_get_json.call_args_list:
+            self.assertEqual(
+                call.kwargs["params"]["filter"],
+                "type:article|preprint,is_retracted:false,from_publication_date:2019-01-01",
+            )
 
 
 if __name__ == "__main__":
