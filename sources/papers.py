@@ -72,7 +72,9 @@ def _candidate(work: dict, query: str) -> dict | None:
 def discover_candidates() -> list[dict]:
     """Collect domestic-affiliated and international research, deduplicated by DOI/URL."""
     collected: dict[str, dict] = {}
-    for index, term in enumerate(SEARCH_TERMS):
+    # Balance a bounded search batch across English and Korean queries.
+    selected_terms = SEARCH_TERMS[:6] + SEARCH_TERMS[12:18]
+    for index, term in enumerate(selected_terms):
         params = {
             "search": term,
             "filter": "type:article|preprint|proceedings-article,is_retracted:false,from_publication_date:2019-01-01",
