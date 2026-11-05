@@ -19,6 +19,8 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
+from verify.mdx import normalize_mdx_text
+
 PUBLIC_IMAGE_DIR = "public/blogs"   # 포트폴리오 레포 안에서 이미지가 저장되는 위치
 PUBLIC_IMAGE_URL_PREFIX = "/blogs"  # mdx에서 참조하는 URL 경로
 
@@ -117,7 +119,8 @@ def render_note(
 
     body_parts = []
     for header, content in sections.items():
-        block = f"## {header}\n\n{normalize_code_fences(content)}\n"
+        safe_content, _ = normalize_mdx_text(normalize_code_fences(content))
+        block = f"## {header}\n\n{safe_content}\n"
         for img in section_images.get(header, []):
             block += f"\n![{img.get('alt', header)}]({img['url']})\n"
         body_parts.append(block)
