@@ -45,14 +45,14 @@ def note_error(url: str, detail: str) -> None:
     _report(url, detail)
 
 
-def request(method: str, url: str, *, headers: dict | None = None, json_body=None,
+def request(method: str, url: str, *, headers: dict | None = None, params: dict | None = None, json_body=None,
             timeout: int = 15, session=None, quiet: bool = False, record: bool = True):
     """성공(2xx/3xx)이면 Response, 실패면 원인을 기록/출력하고 None."""
     h = {"User-Agent": BROWSER_UA}
     if headers:
         h.update(headers)
     try:
-        r = (session or requests).request(method, url, headers=h, json=json_body, timeout=timeout)
+        r = (session or requests).request(method, url, headers=h, params=params, json=json_body, timeout=timeout)
     except requests.RequestException as e:
         _report(url, f"{type(e).__name__}: {str(e)[:220]}", quiet, record)
         return None
