@@ -5,12 +5,13 @@
 topics/새주제.py를 만들고 여기 한 줄만 추가하면 됩니다.
 """
 
-from topics import troubleshooting, algorithm, opensource
+from topics import troubleshooting, algorithm, opensource, paper_review
 
 TOPICS = {
     troubleshooting.KEY: troubleshooting,
     algorithm.KEY: algorithm,
     opensource.KEY: opensource,
+    paper_review.KEY: paper_review,
 }
 
 

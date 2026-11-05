@@ -52,7 +52,9 @@ TROUBLESHOOTING_SEEDS = [
 TROUBLESHOOTING_MIN_SCORE = 20
 TROUBLESHOOTING_EXCLUDED_TAGS = "python-2.7;python-2.x;python-2.6"
 # 시드 몇 개를 뽑아 후보를 만들지 / 시드당 몇 건을 가져올지
-TROUBLESHOOTING_SEEDS_PER_RUN = 3
+TROUBLESHOOTING_SEEDS_PER_RUN = 3  # 첫 검색 시도 수
+TROUBLESHOOTING_MAX_SEED_QUERIES = 12  # 후보 부족 시 확장 검색할 최대 시드 수
+TROUBLESHOOTING_TARGET_CANDIDATES = 24  # 이력 제외 후 확보할 후보 목표
 TROUBLESHOOTING_PER_SEED = 4
 
 # GitHub 이슈도 후보에 섞고 싶으면 True (기본 False — 이슈는 해결책이 코멘트에 흩어져 있고

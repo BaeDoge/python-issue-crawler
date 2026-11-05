@@ -19,6 +19,8 @@ ENGINE_PATH = ROOT_DIR / "engine.py"
 
 DEFAULT_TROUBLESHOOTING_COUNT = 5
 DEFAULT_ALGORITHM_COUNT = 5
+DEFAULT_OPENSOURCE_COUNT = 0
+DEFAULT_PAPER_REVIEW_COUNT = 0
 DEFAULT_MAX_ATTEMPTS = 20
 
 EXCLUDED_DIRS = {
@@ -174,7 +176,7 @@ def generate_topic(
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="알고리즘 및 트러블슈팅 MDX 자동 생성"
+        description="기술 콘텐츠 MDX 자동 생성"
     )
 
     parser.add_argument(
@@ -192,6 +194,20 @@ def main() -> int:
     )
 
     parser.add_argument(
+        "--opensource",
+        type=int,
+        default=DEFAULT_OPENSOURCE_COUNT,
+        help="생성할 오픈소스 분석 글 개수 (기본값: 0)",
+    )
+
+    parser.add_argument(
+        "--paper-review",
+        type=int,
+        default=DEFAULT_PAPER_REVIEW_COUNT,
+        help="생성할 국내외 논문 리뷰 글 개수 (기본값: 0)",
+    )
+
+    parser.add_argument(
         "--max-attempts",
         type=int,
         default=DEFAULT_MAX_ATTEMPTS,
@@ -200,7 +216,7 @@ def main() -> int:
 
     args = parser.parse_args()
 
-    if args.troubleshooting < 0 or args.algorithm < 0:
+    if min(args.troubleshooting, args.algorithm, args.opensource, args.paper_review) < 0:
         parser.error("생성 개수는 0 이상이어야 합니다.")
 
     if args.max_attempts < 1:
@@ -217,6 +233,8 @@ def main() -> int:
     print(f"엔진 경로: {ENGINE_PATH}")
     print(f"트러블슈팅 목표: {args.troubleshooting}개")
     print(f"알고리즘 목표: {args.algorithm}개")
+    print(f"오픈소스 목표: {args.opensource}개")
+    print(f"논문 리뷰 목표: {args.paper_review}개")
     print(f"카테고리별 최대 시도: {args.max_attempts}회")
     print("발행: 비활성화 (--no-publish)")
     print("=" * 72, flush=True)
@@ -227,6 +245,8 @@ def main() -> int:
         jobs = [
             ("troubleshooting", args.troubleshooting),
             ("algorithm", args.algorithm),
+            ("opensource", args.opensource),
+            ("paper-review", args.paper_review),
         ]
 
         for topic, target in jobs:
@@ -251,11 +271,12 @@ def main() -> int:
     total_created = 0
 
     for topic, (created, attempts) in results.items():
-        target = (
-            args.troubleshooting
-            if topic == "troubleshooting"
-            else args.algorithm
-        )
+        target = {
+            "troubleshooting": args.troubleshooting,
+            "algorithm": args.algorithm,
+            "opensource": args.opensource,
+            "paper-review": args.paper_review,
+        }[topic]
 
         total_created += created
 

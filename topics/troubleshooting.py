@@ -10,6 +10,7 @@ StackOverflow의 "채택 답변 + 높은 추천 수" Q&A를 후보로 삼습니�
 """
 
 from config import OUTPUT_DIR
+import history
 from sources.registry import TROUBLESHOOTING_USE_GITHUB, BLOG_MAX_ARTICLES
 from sources.web import (
     stackoverflow_seed_candidates, github_issue_common_errors,
@@ -26,7 +27,7 @@ MIN_ANSWER_CHARS = 80   # 답변 본문이 이보다 짧으면 해결 단서가 
 
 
 def _gather_candidates() -> list:
-    candidates = stackoverflow_seed_candidates()
+    candidates = stackoverflow_seed_candidates(exclude_links=history.used_links(KEY))
     if TROUBLESHOOTING_USE_GITHUB:
         candidates += github_issue_common_errors(limit=5)
     return candidates

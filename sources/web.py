@@ -29,6 +29,7 @@ from sources.registry import (
     TROUBLESHOOTING_GITHUB_QUERY, TROUBLESHOOTING_MAX_AGE_YEARS,
     TROUBLESHOOTING_SEEDS, TROUBLESHOOTING_MIN_SCORE, TROUBLESHOOTING_EXCLUDED_TAGS,
     TROUBLESHOOTING_SEEDS_PER_RUN, TROUBLESHOOTING_PER_SEED,
+    TROUBLESHOOTING_MAX_SEED_QUERIES, TROUBLESHOOTING_TARGET_CANDIDATES,
 )
 
 
@@ -112,11 +113,10 @@ def _stackexchange_get(url: str) -> list:
 
 def stackoverflow_common_errors(limit: int = 6) -> list:
     """채택 답변이 있는 'error' 질문 — 원인+해결이 둘 다 확보되는 소재."""
-    fromdate = int(time.time()) - 365 * 24 * 3600 * TROUBLESHOOTING_MAX_AGE_YEARS
     url = (
         "https://api.stackexchange.com/2.3/search/advanced"
-        "?order=desc&sort=hot&q=error&accepted=True&answers=1"
-        f"&fromdate={fromdate}&site=stackoverflow&pagesize={limit}&filter=withbody"
+        "?order=desc&sort=hot&q=error&accepted=True&answers=1&tagged=python&nottagged=" + urllib.parse.quote(TROUBLESHOOTING_EXCLUDED_TAGS) + "&min=10"
+        f"&site=stackoverflow&pagesize={limit}&filter=withbody"
     )
     items = _stackexchange_get(url)
     out = []
@@ -151,22 +151,29 @@ def _title_matches_seed(title: str, seed: str) -> bool:
     return sum(1 for w in words if w in tl) / len(words) >= 0.6
 
 
-def stackoverflow_for_seed(seed: str, limit: int = 4) -> list:
+def stackoverflow_for_seed(seed: str, limit: int = 4, min_score: int | None = None, relaxed_title: bool = False) -> list:
     """시드(에러 메시지/증상)로 검색 — 파이썬 태그, 채택 답변 있음, 추천 수 높은 순.
     흔하고 검증된 Q&A만 나오게 하는 용도라 연도 제한은 두지 않음(파이썬 에러는 시간이
     지나도 유효한 경우가 대부분이고, 파이썬2 글은 태그로 제외)."""
     params = {
         "order": "desc", "sort": "votes", "q": seed, "accepted": "True", "answers": "1",
         "tagged": "python", "nottagged": TROUBLESHOOTING_EXCLUDED_TAGS,
-        "min": str(TROUBLESHOOTING_MIN_SCORE),
+        "min": str(TROUBLESHOOTING_MIN_SCORE if min_score is None else min_score),
         "site": "stackoverflow", "pagesize": "20", "filter": "withbody",
     }
     url = "https://api.stackexchange.com/2.3/search/advanced?" + urllib.parse.urlencode(params)
     out = []
     for item in _stackexchange_get(url):
         title = _unescape(item.get("title", ""))
-        if not title or not _title_matches_seed(title, seed):
+        if not title:
             continue
+        if not _title_matches_seed(title, seed):
+            if not relaxed_title:
+                continue
+            seed_terms = [w.lower() for w in re.findall(r"[A-Za-z0-9_]{4,}", seed)]
+            title_terms = set(re.findall(r"[A-Za-z0-9_]{4,}", title.lower()))
+            if not any(term in title_terms for term in seed_terms):
+                continue
         if len(out) >= limit:
             break
         raw_body = item.get("body") or ""
@@ -185,15 +192,70 @@ def stackoverflow_for_seed(seed: str, limit: int = 4) -> list:
     return out
 
 
-def stackoverflow_seed_candidates() -> list:
-    """시드 목록에서 무작위로 몇 개를 골라 후보를 모은다 (매번 다른 에러가 나오도록)."""
-    seeds = random.sample(TROUBLESHOOTING_SEEDS, k=min(TROUBLESHOOTING_SEEDS_PER_RUN, len(TROUBLESHOOTING_SEEDS)))
-    out, seen = [], set()
-    for seed in seeds:
-        for c in stackoverflow_for_seed(seed, limit=TROUBLESHOOTING_PER_SEED):
-            if c["link"] not in seen:
-                seen.add(c["link"])
-                out.append(c)
+def _looks_like_python_error_title(title: str) -> bool:
+    patterns = (
+        "error", "exception", "warning", "cannot import", "no module named",
+        "not callable", "not subscriptable", "not iterable", "has no attribute",
+        "list index out of range", "keyerror", "typeerror", "valueerror",
+        "attributeerror", "importerror", "modulenotfounderror", "syntaxerror",
+        "indentationerror", "unboundlocalerror", "unicode", "settingwithcopy",
+    )
+    lower = (title or "").casefold()
+    return any(pattern in lower for pattern in patterns)
+
+
+def stackoverflow_seed_candidates(exclude_links: set[str] | None = None) -> list:
+    """Search beyond initial random seeds until enough unseen, answer-backed topics exist."""
+    from history import _canonical_link
+
+    excluded = {_canonical_link(link) for link in (exclude_links or set())}
+    seeds = list(TROUBLESHOOTING_SEEDS)
+    random.shuffle(seeds)
+    initial_count = min(TROUBLESHOOTING_SEEDS_PER_RUN, len(seeds))
+    query_limit = min(TROUBLESHOOTING_MAX_SEED_QUERIES, len(seeds))
+    out: list[dict] = []
+    seen: set[str] = set()
+    queried = 0
+
+    for index, seed in enumerate(seeds[:query_limit]):
+        queried += 1
+        relaxed = index >= initial_count
+        min_score = TROUBLESHOOTING_MIN_SCORE if not relaxed else max(0, min(5, TROUBLESHOOTING_MIN_SCORE))
+        results = stackoverflow_for_seed(
+            seed, limit=max(TROUBLESHOOTING_PER_SEED, 6),
+            min_score=min_score, relaxed_title=relaxed,
+        )
+        for candidate in results:
+            link = _canonical_link(candidate.get("link"))
+            if not link or link in seen or link in excluded:
+                continue
+            seen.add(link)
+            out.append(candidate)
+            if len(out) >= TROUBLESHOOTING_TARGET_CANDIDATES:
+                break
+        if len(out) >= TROUBLESHOOTING_TARGET_CANDIDATES:
+            break
+
+    if len(out) < TROUBLESHOOTING_TARGET_CANDIDATES:
+        # Last-resort broad StackOverflow search. Keep Python-tagged accepted answers
+        # and recognizable error/warning titles; never fall back to arbitrary questions.
+        for candidate in stackoverflow_common_errors(limit=40):
+            if not _looks_like_python_error_title(candidate.get("title", "")):
+                continue
+            link = _canonical_link(candidate.get("link"))
+            if not link or link in seen or link in excluded:
+                continue
+            seen.add(link)
+            out.append(candidate)
+            if len(out) >= TROUBLESHOOTING_TARGET_CANDIDATES:
+                break
+
+    print(
+        f"[트러블슈팅 후보] 검색 시드 {queried}/{len(seeds)}개 + 일반 오류 검색, "
+        f"신규 후보 {len(out)}개, 이력 제외 {len(excluded)}개"
+    )
+    if not out:
+        print("[트러블슈팅 후보] 결과가 0건입니다. sources/net.py의 수집 오류와 StackExchange API 응답을 확인하세요.")
     return out
 
 
