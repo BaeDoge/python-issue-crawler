@@ -9,6 +9,7 @@ import subprocess
 from pathlib import Path
 
 from config import AUTO_PUSH, PUBLISH_TARGETS
+from verify.mdx import normalize_mdx_text
 
 
 class PublishError(Exception):
@@ -240,6 +241,7 @@ def _publish_to_repo(
 
         stage = "MDX 파일 복사"
         note_content = note_path.read_text(encoding="utf-8")
+        note_content, _ = normalize_mdx_text(note_content)
         image_url_prefix = target["image_url_prefix"]
         if image_url_prefix != "/blogs":
             note_content = note_content.replace("/blogs/", image_url_prefix + "/")
@@ -252,6 +254,7 @@ def _publish_to_repo(
             en_dest_path = repo_path / _safe_relative(en_posts_dir) / note_path.name
             en_dest_path.parent.mkdir(parents=True, exist_ok=True)
             en_content = en_note_path.read_text(encoding="utf-8")
+            en_content, _ = normalize_mdx_text(en_content)
             if image_url_prefix != "/blogs":
                 en_content = en_content.replace("/blogs/", image_url_prefix + "/")
             en_dest_path.write_text(en_content, encoding="utf-8", newline="\n")
