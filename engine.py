@@ -5,7 +5,7 @@
     uv run pipeline/engine.py                       # 메뉴에서 선택
     uv run pipeline/engine.py --topic troubleshooting
     uv run pipeline/engine.py --topic algorithm
-    uv run pipeline/engine.py --topic both           # 둘 다 한 편씩
+    uv run pipeline/engine.py --topic both           # 트러블슈팅 + 알고리즘\n    uv run engine.py --topic all            # 등록된 모든 주제 한 편씩
     uv run pipeline/engine.py --topic algorithm --count 3  # 알고리즘 3편 생성
     uv run pipeline/engine.py --topic both --count 2      # 각 주제 2편씩, 총 4편
 
@@ -37,7 +37,7 @@ from publish.git_publish import publish_note
 
 def _parse_args():
     parser = argparse.ArgumentParser(description="트러블슈팅/알고리즘 노트를 생성하고 설정된 저장소에 발행합니다")
-    parser.add_argument("--topic", choices=[*TOPICS.keys(), "both"], help="생성할 주제 (생략하면 메뉴가 뜸)")
+    parser.add_argument("--topic", choices=[*TOPICS.keys(), "both", "all"], help="생성할 주제 (생략하면 메뉴가 뜸)")
     parser.add_argument("--discover-opensource", action="store_true", help="GitHub 인기/최근 활동 후보만 탐색하고 목록을 출력 (글 생성/발행 안 함)")
     parser.add_argument("--count", type=int, default=1,
                         help="주제별 생성 편수 (기본값: 1, --topic both이면 각 주제에 적용)")
@@ -55,10 +55,12 @@ def _resolve_via_inquirer() -> str:
     import inquirer
     choice = inquirer.list_input(
         "어떤 걸 생성할까요?",
-        choices=[f"{label} ({key})" for key, label in topic_choices()] + ["둘 다 (both)"],
+        choices=[f"{label} ({key})" for key, label in topic_choices()] + ["트러블슈팅 + 알고리즘 (both)", "전체 주제 (all)"],
     )
-    if choice.startswith("둘 다"):
+    if choice.startswith("트러블슈팅 + 알고리즘"):
         return "both"
+    if choice.startswith("전체 주제"):
+        return "all"
     return choice.split("(")[-1].rstrip(")")
 
 
@@ -143,7 +145,12 @@ def main():
     if not args.no_publish and not PUBLISH_TARGETS:
         print("ℹ️ .env에 PUBLISH_TARGETS가 없어 발행은 건너뜁니다 (파일은 output_files/ 에 저장됨).")
 
-    keys = list(TOPICS.keys()) if topic_key == "both" else [topic_key]
+    if topic_key == "both":
+        keys = [key for key in ("troubleshooting", "algorithm") if key in TOPICS]
+    elif topic_key == "all":
+        keys = list(TOPICS.keys())
+    else:
+        keys = [topic_key]
     summary = []
     total_runs = len(keys) * args.count
 
