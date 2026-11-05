@@ -116,7 +116,7 @@ def stackoverflow_common_errors(limit: int = 6) -> list:
     fromdate = int(time.time()) - 365 * 24 * 3600 * TROUBLESHOOTING_MAX_AGE_YEARS
     url = (
         "https://api.stackexchange.com/2.3/search/advanced"
-        "?order=desc&sort=hot&q=error&accepted=True&answers=1"
+        "?order=desc&sort=hot&q=error&accepted=True&answers=1&tagged=python&nottagged=" + urllib.parse.quote(TROUBLESHOOTING_EXCLUDED_TAGS) + "&min=10"
         f"&fromdate={fromdate}&site=stackoverflow&pagesize={limit}&filter=withbody"
     )
     items = _stackexchange_get(url)
@@ -193,6 +193,18 @@ def stackoverflow_for_seed(seed: str, limit: int = 4, min_score: int | None = No
     return out
 
 
+def _looks_like_python_error_title(title: str) -> bool:
+    patterns = (
+        "error", "exception", "warning", "cannot import", "no module named",
+        "not callable", "not subscriptable", "not iterable", "has no attribute",
+        "list index out of range", "keyerror", "typeerror", "valueerror",
+        "attributeerror", "importerror", "modulenotfounderror", "syntaxerror",
+        "indentationerror", "unboundlocalerror", "unicode", "settingwithcopy",
+    )
+    lower = (title or "").casefold()
+    return any(pattern in lower for pattern in patterns)
+
+
 def stackoverflow_seed_candidates(exclude_links: set[str] | None = None) -> list:
     """Search beyond initial random seeds until enough unseen, answer-backed topics exist."""
     from history import _canonical_link
@@ -225,8 +237,22 @@ def stackoverflow_seed_candidates(exclude_links: set[str] | None = None) -> list
         if len(out) >= TROUBLESHOOTING_TARGET_CANDIDATES:
             break
 
+    if len(out) < TROUBLESHOOTING_TARGET_CANDIDATES:
+        # Last-resort broad StackOverflow search. Keep Python-tagged accepted answers
+        # and recognizable error/warning titles; never fall back to arbitrary questions.
+        for candidate in stackoverflow_common_errors(limit=40):
+            if not _looks_like_python_error_title(candidate.get("title", "")):
+                continue
+            link = _canonical_link(candidate.get("link"))
+            if not link or link in seen or link in excluded:
+                continue
+            seen.add(link)
+            out.append(candidate)
+            if len(out) >= TROUBLESHOOTING_TARGET_CANDIDATES:
+                break
+
     print(
-        f"[트러블슈팅 후보] 검색 시드 {queried}/{len(seeds)}개, "
+        f"[트러블슈팅 후보] 검색 시드 {queried}/{len(seeds)}개 + 일반 오류 검색, "
         f"신규 후보 {len(out)}개, 이력 제외 {len(excluded)}개"
     )
     if not out:
