@@ -66,8 +66,8 @@ def _candidate(work: dict, query: str) -> dict | None:
         "is_domestic": is_domestic, "query": query, "abstract": abstract,
         "pdf_url": (work.get("best_oa_location") or {}).get("pdf_url"),
         "type": "domestic" if is_domestic else "international",
-        "signal": f"{'국내 소속' if is_domestic else '해외 소속 미확인'} · {work.get('publication_year') or '연도 미확인'} · 인용 {int(work.get('cited_by_count') or 0)}회",
-        "meta": f"분류={'국내 연구' if is_domestic else '해외/국제 연구'}; 발행={work.get('publication_date') or '미확인'}; DOI={doi or '없음'}",
+        "signal": f"{'국내 소속' if is_domestic else '국내 기관 소속 미확인'} · {work.get('publication_year') or '연도 미확인'} · 인용 {int(work.get('cited_by_count') or 0)}회",
+        "meta": f"분류={'국내 연구' if is_domestic else '국내 기관 소속 미확인'}; 발행={work.get('publication_date') or '미확인'}; DOI={doi or '없음'}",
     }
 
 
