@@ -1,4 +1,4 @@
-"""
+""""
 공용 HTTP 계층 — 모든 소스 모듈이 이걸 통해 네트워크에 접근합니다.
 ========================================================================
 이전 버전의 문제 두 가지를 고치기 위한 모듈입니다.
@@ -46,18 +46,21 @@ def note_error(url: str, detail: str) -> None:
 
 
 def request(method: str, url: str, *, headers: dict | None = None, json_body=None,
-            timeout: int = 15, session=None, quiet: bool = False, record: bool = True):
+            params: dict | None = None, timeout: int = 15, session=None,
+            quiet: bool = False, record: bool = True):
     """성공(2xx/3xx)이면 Response, 실패면 원인을 기록/출력하고 None."""
     h = {"User-Agent": BROWSER_UA}
     if headers:
         h.update(headers)
     try:
-        r = (session or requests).request(method, url, headers=h, json=json_body, timeout=timeout)
+        r = (session or requests).request(
+            method, url, headers=h, json=json_body, params=params, timeout=timeout
+        )
     except requests.RequestException as e:
         _report(url, f"{type(e).__name__}: {str(e)[:220]}", quiet, record)
         return None
     if r.status_code >= 400:
-        snippet = re.sub(r"\s+", " ", r.text[:160])
+        snippet = re.sub(r"\\s+", " ", r.text[:160])
         _report(url, f"HTTP {r.status_code} {r.reason} — {snippet}", quiet, record)
         return None
     return r
