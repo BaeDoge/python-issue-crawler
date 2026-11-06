@@ -2,7 +2,10 @@ import unittest
 
 from unittest.mock import patch
 
-from sources.papers import _abstract_from_index, _candidate, _extract_code_links, _arxiv_html_url, discover_candidates
+from sources.papers import (
+    _abstract_from_index, _candidate, _extract_code_links, _arxiv_html_url,
+    _is_developer_focused, discover_candidates,
+)
 
 
 class PaperSourceTests(unittest.TestCase):
@@ -15,7 +18,7 @@ class PaperSourceTests(unittest.TestCase):
     def test_classifies_korean_affiliated_research(self):
         abstract = " ".join(f"word{i}" for i in range(40))
         work = {
-            "title": "A research paper",
+            "title": "A database system research paper",
             "id": "https://openalex.org/W123",
             "abstract_inverted_index": {word: [i] for i, word in enumerate(abstract.split())},
             "authorships": [{"institutions": [{"country_code": "KR"}]}],
@@ -25,6 +28,34 @@ class PaperSourceTests(unittest.TestCase):
         self.assertIsNotNone(item)
         self.assertTrue(item["is_domestic"])
         self.assertEqual(item["type"], "domestic")
+
+    def test_filters_papers_outside_development_scope(self):
+        self.assertFalse(
+            _is_developer_focused(
+                "Digital diplomacy and legal immunity",
+                "This paper discusses international law and diplomatic policy.",
+            )
+        )
+        self.assertFalse(
+            _is_developer_focused(
+                "Generative AI in Korean language education",
+                "This study focuses on teaching strategy and language learning.",
+            )
+        )
+
+    def test_keeps_computing_research(self):
+        self.assertTrue(
+            _is_developer_focused(
+                "Reducing interference in large language model knowledge editing",
+                "We study model editing algorithms for large language models.",
+            )
+        )
+        self.assertTrue(
+            _is_developer_focused(
+                "분산 데이터베이스의 쿼리 최적화",
+                "대규모 분산 시스템에서 데이터베이스 처리 성능을 개선합니다.",
+            )
+        )
 
     def test_does_not_guess_code_repository(self):
         self.assertEqual(_extract_code_links("No official implementation is linked."), [])
