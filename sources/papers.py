@@ -30,6 +30,13 @@ _DEVELOPER_FOCUS = re.compile(
     r"data engineering|gpu|robotics|software engineering|benchmark|optimization)\b",
     re.I,
 )
+_KOREAN_DEVELOPER_FOCUS = re.compile(
+    r"(소프트웨어|프로그래밍|코드 생성|컴파일러|데이터베이스|분산 시스템|컴퓨터 비전|"
+    r"자연어 처리|대규모 언어 모델|인공지능|머신러닝|딥러닝|신경망|검색 증강 생성|"
+    r"벡터 데이터베이스|추론|모델 편집|모델 압축|운영체제|클라우드|네트워크|보안|"
+    r"정보 검색|데이터 엔지니어링|그래픽 처리 장치|로보틱스|소프트웨어 공학|알고리즘|최적화)",
+    re.I,
+)
 _NON_DEVELOPER_TITLE = re.compile(
     r"(diplomac|diplomatic|international law|constitutional law|legal framework|"
     r"pedagogical|language education|language learning|korean language learning|"
@@ -44,7 +51,11 @@ def _is_developer_focused(title: str, abstract: str) -> bool:
     """Require a concrete software/computing connection and reject unrelated domain papers."""
     if _NON_DEVELOPER_TITLE.search(title or ""):
         return False
-    return bool(_DEVELOPER_FOCUS.search(f"{title or ''} {abstract or ''}"))
+    combined = f"{title or ''} {abstract or ''}"
+    return bool(
+        _DEVELOPER_FOCUS.search(combined)
+        or _KOREAN_DEVELOPER_FOCUS.search(combined)
+    )
 
 
 
