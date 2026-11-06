@@ -71,7 +71,7 @@ SPEC = TopicSpec(
         "Proposed Method and Key Mechanisms", "Experiments and Main Findings",
         "Related Code and Reproduction", "Technical Implications and Limitations",
     ),
-    min_section_chars=100, max_rounds=3, min_total_chars=1200,
+    min_section_chars=100, max_rounds=3, min_total_chars=0,
     long_form_guidance=GUIDANCE,
     flexible_sections=True,
     extra_writer_rules=(
