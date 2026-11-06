@@ -73,6 +73,22 @@ def _strip_think(s: str) -> str:
     return re.sub(r"<think>.*?</think>", "", s, flags=re.DOTALL).strip()
 
 
+def _has_non_polite_korean(text: str) -> bool:
+    """Detect common declarative plain-style endings in paper-review prose."""
+    fence = chr(96) * 3
+    tick = chr(96)
+    value = re.sub(fence + r"[\s\S]*?" + fence, " ", text or "")
+    value = re.sub(tick + r"[^" + tick + r"]*" + tick, " ", value)
+    plain_endings = re.compile(
+        r"(?:한다|된다|있다|없다|이다|였다|했다|하였다|아니다|"
+        r"(?<!니)다)\s*[.!?。]\s*[\"'’”)]*$"
+    )
+    return any(
+        plain_endings.search(sentence.strip())
+        for sentence in re.split(r"(?<=[.!?。])\s+|\n+", value)
+        if sentence.strip()
+    )
+
 def has_real_code(content: str) -> bool:
     """코드블록 중 주석/빈 줄이 아닌 줄이 하나라도 있는 블록이 있는가.
     ('// 코드 수정 불가' 같은 형식만 맞춘 더미 블록을 걸러내기 위함)"""
@@ -146,6 +162,13 @@ def _writer_prompt(spec: TopicSpec, chosen_title: str, context_text: str) -> str
         "- 파일명·함수명·키·명령어는 본문에서 인라인 코드로 감쌀 것\n"
         "- 일반론으로 문단을 늘이지 말고, 한 문단에는 핵심 주장 하나를 설명할 것\n"
     )
+    if spec.flexible_sections:
+        shared_rules += (
+            "- 트러블슈팅·알고리즘 글과 같은 자연스러운 편한 존댓말로 쓸 것. '-습니다', '-해요'를 자연스럽게 섞고 "
+            "'-한다/-이다/-했다' 문장체나 반말은 쓰지 말 것\n"
+            "- 독자에게 설명하듯 어렵지 않은 문장으로 쓸 것. 번역한 논문 초록 같은 딱딱한 문장과 상투적 서두를 피할 것\n"
+            "- 제목은 일반 Markdown '## 제목'만 사용하고, '##' 자체를 굵게 감싸지 말 것\n"
+        )
 
     if spec.flexible_sections:
         output_structure = (
@@ -259,6 +282,12 @@ def _deterministic_check(
                     f"저장소 경로가 실제 Git 트리에서 확인되지 않음: {preview}{remainder}. "
                     "경로를 실제 파일 목록에 맞춰 수정하거나, 확인되지 않는 경로 언급을 삭제할 것"
                 )
+
+        if spec.flexible_sections and _has_non_polite_korean(all_text):
+            issues.append(
+                "논문 리뷰에 '-한다/-이다/-했다' 문장체가 섞여 있습니다. "
+                "트러블슈팅·알고리즘 글처럼 자연스러운 존댓말('-습니다/-해요')로 전체 문장을 고쳐 쓸 것"
+            )
 
         issues += detect_foreign_language_mixing(all_text)
         return {"passed": not issues, "issues": issues}
@@ -458,6 +487,7 @@ def run_topic(spec: TopicSpec) -> dict:
     writer = build_writer_agent(
         role=spec.writer_role, goal=spec.writer_goal, backstory=spec.writer_backstory,
         long_form=bool(spec.long_form_guidance),
+        conversational_polite=spec.flexible_sections,
     )
     reviewer = build_reviewer_agent(
         role=spec.reviewer_role, goal=spec.reviewer_goal, checklist=spec.reviewer_checklist,

@@ -18,6 +18,7 @@ import re
 import shutil
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from verify.mdx import normalize_mdx_text
 
@@ -60,6 +61,35 @@ def _slugify(title: str, content_type: str) -> str:
     if len(ascii_part) >= 4:
         return ascii_part[:60]
     return f"{content_type}-{datetime.now():%Y%m%d-%H%M%S}"
+
+
+def _source_url_key(url: str | None) -> str:
+    """Canonical key for duplicate DOI and ordinary source URLs."""
+    if not url:
+        return ""
+    try:
+        parts = urlsplit(url.strip())
+    except ValueError:
+        return url.strip().rstrip("/").casefold()
+    host = (parts.hostname or "").casefold()
+    path = (parts.path or "").rstrip("/")
+    if host in {"doi.org", "www.doi.org", "dx.doi.org"}:
+        return "doi:" + path.lstrip("/").casefold()
+    return f"{host}{path}".casefold()
+
+
+def _dedupe_sources(sources: list[dict] | None) -> list[dict]:
+    """Keep the first useful label for a URL and suppress duplicate links."""
+    unique = []
+    seen = set()
+    for source in sources or []:
+        url = source.get("url")
+        key = _source_url_key(url)
+        if not url or not key or key in seen:
+            continue
+        seen.add(key)
+        unique.append(source)
+    return unique
 
 
 def _source_line(src: dict) -> str:
@@ -107,6 +137,8 @@ def render_note(
         if img.get("source_url") and not any(s["url"] == img["source_url"] for s in sources):
             sources.append({"platform": img.get("platform"), "title": None,
                             "url": img["source_url"], "author": img.get("author")})
+
+    sources = _dedupe_sources(sources)
 
     frontmatter = (
         "---\n"
@@ -199,7 +231,7 @@ def render_note_en(
             block += f"\n![{img['alt']}]({img['url']})\n"
         body_parts.append(block)
 
-    sources = ko_result.get("sources", [])
+    sources = _dedupe_sources(ko_result.get("sources", []))
     if sources:
         src_block = "## Sources\n\n" + "\n".join(_source_line_en(s) for s in sources) + "\n"
         if ko_result.get("image_files"):

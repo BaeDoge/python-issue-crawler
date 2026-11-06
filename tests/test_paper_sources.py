@@ -5,7 +5,8 @@ from unittest.mock import patch
 
 from sources.papers import (
     _abstract_from_index, _candidate, _extract_code_links, _arxiv_html_url,
-    _is_developer_focused, _verify_public_github_repositories, discover_candidates,
+    _is_developer_focused, _verify_public_github_repositories, _base_interest_score,
+    _repository_interest_score, discover_candidates,
 )
 
 
@@ -69,6 +70,35 @@ class PaperSourceTests(unittest.TestCase):
                 "We evaluate agentic systems and function calling for software tasks.",
             )
         )
+
+    def test_uses_recent_citation_counts_for_interest(self):
+        recent = {
+            "publication_date": "2026-01-01",
+            "year": 2026,
+            "recent_citations_2y": 24,
+            "cited_by_count": 30,
+            "fwci": 2.0,
+            "citation_percentile": 0.8,
+        }
+        quiet = {
+            "publication_date": "2026-01-01",
+            "year": 2026,
+            "recent_citations_2y": 0,
+            "cited_by_count": 0,
+            "fwci": 0.0,
+            "citation_percentile": 0.0,
+        }
+        self.assertGreater(_base_interest_score(recent), _base_interest_score(quiet))
+
+    def test_verified_github_repo_adds_a_weighted_priority_bonus(self):
+        repo = {
+            "stargazers_count": 1200,
+            "forks_count": 180,
+            "pushed_at": "2026-10-01T12:00:00Z",
+            "archived": False,
+        }
+        self.assertGreaterEqual(_repository_interest_score([repo]), 25.0)
+        self.assertEqual(_repository_interest_score([]), 0.0)
 
     def test_does_not_guess_code_repository(self):
         self.assertEqual(_extract_code_links("No official implementation is linked."), [])
