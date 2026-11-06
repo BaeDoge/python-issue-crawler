@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import base64
+import math
 import re
 import time
+from datetime import date, datetime, timezone
+from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
 
@@ -20,6 +23,141 @@ SEARCH_TERMS = [
 ]
 MAX_PAPERS = 80
 MIN_ABSTRACT_CHARS = 180
+GITHUB_ENRICH_LIMIT = 18
+MAX_FINAL_CANDIDATES = 14
+MIN_PRIORITY_SCORE = 35
+
+# Include both fresh research and established work with strong citation traction.
+SEARCH_PLAN = [
+    ("large language models", "publication_date:desc"),
+    ("retrieval augmented generation", "cited_by_count:desc"),
+    ("AI agents", "publication_date:desc"),
+    ("multimodal learning", "cited_by_count:desc"),
+    ("machine learning systems", "publication_date:desc"),
+    ("software engineering AI", "cited_by_count:desc"),
+    ("대규모 언어 모델", "publication_date:desc"),
+    ("검색 증강 생성", "cited_by_count:desc"),
+    ("inference optimization", "publication_date:desc"),
+    ("AI agent systems", "cited_by_count:desc"),
+]
+
+
+def _publication_age_days(publication_date: str) -> int:
+    try:
+        published = date.fromisoformat((publication_date or "")[:10])
+        return max(0, (date.today() - published).days)
+    except (TypeError, ValueError):
+        return 3650
+
+
+def _citation_signals(work: dict) -> tuple[int, int, float]:
+    total = int(work.get("cited_by_count") or 0)
+    counts = work.get("counts_by_year") or []
+    cutoff = date.today().year - 1
+    recent = sum(
+        int(item.get("cited_by_count") or 0)
+        for item in counts
+        if int(item.get("year") or 0) >= cutoff
+    )
+    age_years = max(0.5, _publication_age_days(work.get("publication_date") or "") / 365.25)
+    annualized = total / age_years
+    return total, recent, annualized
+
+
+def _recency_score(publication_date: str) -> int:
+    age = _publication_age_days(publication_date)
+    if age <= 45:
+        return 20
+    if age <= 120:
+        return 17
+    if age <= 240:
+        return 14
+    if age <= 365:
+        return 11
+    if age <= 730:
+        return 8
+    if age <= 1460:
+        return 4
+    return 1
+
+
+def _attention_score(candidate: dict) -> tuple[int, list[str]]:
+    """Transparent 0–100 ranking: recency, citation traction and verified repository signals."""
+    total = int(candidate.get("cited_by_count") or 0)
+    recent = int(candidate.get("recent_citations") or 0)
+    annualized = float(candidate.get("annualized_citations") or 0)
+    recency = _recency_score(candidate.get("publication_date") or "")
+
+    citation_score = min(18.0, math.log1p(total) * 3.2)
+    recent_score = min(12.0, math.log1p(max(recent, annualized)) * 2.8)
+
+    repos = candidate.get("github_repositories") or []
+    repo_presence_score = 10.0 if repos else 0.0
+    stars = max((int(repo.get("stargazers_count") or 0) for repo in repos), default=0)
+    forks = max((int(repo.get("forks_count") or 0) for repo in repos), default=0)
+    archived = all(bool(repo.get("archived")) for repo in repos) if repos else False
+    github_star_score = min(15.0, math.log1p(stars) * 1.8)
+    github_fork_score = min(5.0, math.log1p(forks) * 1.3)
+
+    pushed_days = []
+    for repo in repos:
+        raw = repo.get("pushed_at") or ""
+        try:
+            pushed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            pushed_days.append(max(0, (datetime.now(timezone.utc) - pushed).days))
+        except (TypeError, ValueError):
+            continue
+    last_push = min(pushed_days, default=None)
+    if last_push is None or archived:
+        activity_score = 0.0
+    elif last_push <= 30:
+        activity_score = 10.0
+    elif last_push <= 90:
+        activity_score = 7.0
+    elif last_push <= 180:
+        activity_score = 4.0
+    elif last_push <= 365:
+        activity_score = 2.0
+    else:
+        activity_score = 0.0
+
+    raw_score = (
+        recency + citation_score + recent_score + repo_presence_score
+        + github_star_score + github_fork_score + activity_score
+    )
+    score = min(100, round(raw_score))
+    reasons = [
+        f"최근성 {recency}/20",
+        f"누적 인용 {total}회",
+        f"최근 2개 연도 인용 {recent}회",
+    ]
+    if repos:
+        reasons.append(f"검증된 GitHub {len(repos)}개")
+        reasons.append(f"최대 ⭐{stars:,} / fork {forks:,}")
+        if last_push is not None:
+            reasons.append(f"최근 커밋 {last_push}일 전")
+    else:
+        reasons.append("공식 GitHub 연결 확인 안 됨")
+    return score, reasons
+
+
+def _apply_attention_score(candidate: dict) -> dict:
+    score, reasons = _attention_score(candidate)
+    candidate["priority_score"] = score
+    candidate["attention_reasons"] = reasons
+    candidate["signal"] = (
+        f"주목도 {score}/100 · "
+        f"인용 {candidate.get('cited_by_count', 0)}회 · "
+        f"최근 인용 {candidate.get('recent_citations', 0)}회 · "
+        + (f"GitHub {len(candidate.get('github_repositories') or [])}개" if candidate.get("github_repositories")
+           else "공식 GitHub 확인 안 됨")
+    )
+    candidate["meta"] = (
+        f"발행={candidate.get('publication_date') or '미확인'}; "
+        f"연간 환산 인용={candidate.get('annualized_citations', 0):.1f}; "
+        f"평가 근거={'; '.join(reasons)}"
+    )
+    return candidate
 
 # Papers whose main contribution is outside software/computing are filtered before LLM selection.
 _DEVELOPER_FOCUS = re.compile(
