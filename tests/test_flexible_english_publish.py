@@ -65,8 +65,19 @@ Accuracy and latency can vary by task and model.
             translated["section_map"]["왜 메모리가 병목이 될까요?"],
             "Why Does Memory Become a Bottleneck?",
         )
-        self.assertIn("모델 가중치 → 추론 → KV 캐시", translated["sections"]["Why Does Memory Become a Bottleneck?"])
+        self.assertIn("Model weights → inference → KV cache", translated["sections"]["Why Does Memory Become a Bottleneck?"])
         self.assertIn("load_model(quantization='4bit')", translated["sections"]["How Does Quantization Work?"])
+
+    def test_restores_flow_diagram_when_arrow_structure_changes(self):
+        from topics.translate import restore_code_blocks
+
+        korean = "내용\n\n```flow\nA → B → C\n```"
+        translated = "Text\n\n```flow\nA → B\n```"
+
+        restored = restore_code_blocks(translated, korean)
+
+        self.assertIn("A → B → C", restored)
+
 
     def test_rejects_missing_or_reordered_section_markers(self):
         raw = """Title: [Paper Review] Example
