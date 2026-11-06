@@ -41,8 +41,22 @@ def _outside_code(text: str) -> str:
     return re.sub(r"`[^`]*`", " ", text)
 
 
+def _block_language(block: str) -> str:
+    match = re.match(r"^\`\`\`([A-Za-z0-9_+#-]+)", block.strip())
+    return match.group(1).lower() if match else ""
+
+
+def _flow_structure(block: str) -> tuple:
+    """Keep flow diagram line/arrow structure while allowing labels to be translated."""
+    inner = re.sub(r"^\`\`\`[A-Za-z0-9_+#-]+\s*", "", block.strip())
+    inner = re.sub(r"\s*\`\`\`$", "", inner)
+    lines = inner.splitlines()
+    connectors = re.compile(r"(?:→|->|-->|⇒|⇢)")
+    return len(lines), tuple(tuple(connectors.findall(line)) for line in lines)
+
+
 def restore_code_blocks(en_text: str, ko_text: str) -> str:
-    """Restore original fenced blocks if translation changed executable code."""
+    """Preserve executable code; allow flow labels to be translated without changing diagram structure."""
     ko_blocks = _blocks(ko_text)
     iterator = iter(ko_blocks)
 
@@ -50,7 +64,10 @@ def restore_code_blocks(en_text: str, ko_text: str) -> str:
         original = next(iterator, None)
         if original is None:
             return match.group(0)
-        return match.group(0) if _code_signature(match.group(0)) == _code_signature(original) else original
+        translated = match.group(0)
+        if _block_language(original) == "flow":
+            return translated if _flow_structure(translated) == _flow_structure(original) else original
+        return translated if _code_signature(translated) == _code_signature(original) else original
 
     return _FENCE_RE.sub(replace, en_text)
 
@@ -99,7 +116,7 @@ def _flexible_translation_prompt(spec, ko: dict) -> str:
         "- Translate the actual section headings supplied below. Do not replace them with a generic fixed outline.\n"
         "- Preserve exactly the same number and order of sections. Do not merge, split, add, or omit sections.\n"
         "- Every output heading MUST begin with its matching marker, exactly '[SECTION N] ', followed by a concise English heading.\n"
-        "- Preserve every fenced code block exactly, including flow diagrams, commands, and code. Never translate or alter their contents.\n"
+        "- Keep executable code blocks (Python, shell, JSON, etc.) exactly as written. For fenced 'flow' diagrams only, translate visible labels into English while preserving every line and arrow connector in the same order.\n"
         "- Do not add facts, examples, metrics, or claims. Translate only the supplied content.\n"
         "- Use clear, natural English. No Korean characters outside code blocks.\n"
         f"- The title must start with '{spec.category_prefix_en}'.\n"
@@ -122,7 +139,7 @@ def _fixed_translation_prompt(spec, ko: dict) -> str:
     return (
         "Translate the following Korean developer note into natural English.\n\n"
         "Rules:\n"
-        "- Keep every fenced code block exactly as is. Never change code, error messages, filenames, or library names.\n"
+        "- Keep executable code blocks exactly as is. In fenced 'flow' diagrams, translate visible labels but preserve line count and arrow connectors. Never change commands, error messages, filenames, or identifiers.\n"
         "- Do not add or remove information. Keep the same number of code blocks in every section.\n"
         f"- The title must start with '{spec.category_prefix_en}'.\n"
         "- Section headers must use this exact mapping:\n" + header_map + "\n"
