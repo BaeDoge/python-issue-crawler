@@ -146,6 +146,13 @@ def _writer_prompt(spec: TopicSpec, chosen_title: str, context_text: str) -> str
         "- 파일명·함수명·키·명령어는 본문에서 인라인 코드로 감쌀 것\n"
         "- 일반론으로 문단을 늘이지 말고, 한 문단에는 핵심 주장 하나를 설명할 것\n"
     )
+    if spec.flexible_sections:
+        shared_rules += (
+            "- 트러블슈팅·알고리즘 글과 같은 자연스러운 편한 존댓말로 쓸 것. '-습니다', '-해요'를 자연스럽게 섞고 "
+            "'-한다/-이다/-했다' 문장체나 반말은 쓰지 말 것\n"
+            "- 독자에게 설명하듯 어렵지 않은 문장으로 쓸 것. 번역한 논문 초록 같은 딱딱한 문장과 상투적 서두를 피할 것\n"
+            "- 제목은 일반 Markdown '## 제목'만 사용하고, '##' 자체를 굵게 감싸지 말 것\n"
+        )
 
     if spec.flexible_sections:
         output_structure = (
@@ -458,6 +465,7 @@ def run_topic(spec: TopicSpec) -> dict:
     writer = build_writer_agent(
         role=spec.writer_role, goal=spec.writer_goal, backstory=spec.writer_backstory,
         long_form=bool(spec.long_form_guidance),
+        conversational_polite=spec.flexible_sections,
     )
     reviewer = build_reviewer_agent(
         role=spec.reviewer_role, goal=spec.reviewer_goal, checklist=spec.reviewer_checklist,
