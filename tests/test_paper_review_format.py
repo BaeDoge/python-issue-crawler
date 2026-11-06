@@ -39,7 +39,7 @@ class FlexiblePaperNoteFormatTests(unittest.TestCase):
 ## 핵심 아이디어
 작은 단계로 최적화를 적용합니다.
 
-## 출처
+## 참고 자료
 - 논문 원문: https://example.org/paper
 """
         parsed = parse_note_text(raw, [], allow_dynamic_sections=True)
