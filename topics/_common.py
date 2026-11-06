@@ -212,6 +212,10 @@ def _deterministic_check(
                 issues.append(
                     f"본문 섹션이 {len(section_items)}개입니다. 논문에 실제로 필요한 서로 다른 섹션을 3개 이상 구성할 것"
                 )
+            if len(section_items) > 6:
+                issues.append(
+                    f"본문 섹션이 {len(section_items)}개입니다. 내용이 겹치는 섹션을 합쳐 6개 이내로 구성할 것"
+                )
         else:
             section_items = [(name, sections.get(name) or "") for name in spec.section_names]
 
