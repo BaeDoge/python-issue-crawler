@@ -25,15 +25,18 @@ _DEVELOPER_FOCUS = re.compile(
     r"\b(software|programming|code generation|compiler|database|distributed system|"
     r"computer vision|natural language processing|large language model|language model|agentic|agents?|tool use|function calling|"
     r"machine learning|deep learning|neural network|retrieval|vector database|"
-    r"inference|model editing|model compression|model serving|architecture|algorithm|"
-    r"operating system|cloud computing|network|cybersecurity|information retrieval|"
+    r"inference|model editing|model compression|model serving|software architecture|system architecture|"
+    r"model architecture|neural architecture|microservice architecture|algorithm|"
+    r"operating system|cloud computing|computer network|wireless network|network protocol|"
+    r"network security|cybersecurity|information retrieval|"
     r"data engineering|gpu|robotics|software engineering|benchmark|optimization)\b",
     re.I,
 )
 _KOREAN_DEVELOPER_FOCUS = re.compile(
     r"(소프트웨어|프로그래밍|코드 생성|컴파일러|데이터베이스|분산 시스템|컴퓨터 비전|"
     r"자연어 처리|대규모 언어 모델|인공지능|머신러닝|딥러닝|신경망|검색 증강 생성|"
-    r"벡터 데이터베이스|추론|모델 편집|모델 압축|운영체제|클라우드|네트워크|보안|"
+    r"벡터 데이터베이스|추론|모델 편집|모델 압축|운영체제|클라우드|컴퓨터 네트워크|"
+    r"무선 네트워크|네트워크 프로토콜|네트워크 보안|소프트웨어 아키텍처|시스템 아키텍처|보안|"
     r"정보 검색|데이터 엔지니어링|그래픽 처리 장치|로보틱스|소프트웨어 공학|알고리즘|최적화)",
     re.I,
 )
