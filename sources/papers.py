@@ -238,33 +238,50 @@ def _candidate(work: dict, query: str) -> dict | None:
     if not title or not landing or len(abstract) < MIN_ABSTRACT_CHARS:
         return None
     is_domestic = _is_korean_affiliated(work)
+    total_citations, recent_citations, annualized_citations = _citation_signals(work)
     return {
         "title": title, "link": landing, "source": "OpenAlex",
         "paper_id": paper_id, "doi": doi,
         "publication_date": work.get("publication_date") or "",
         "year": work.get("publication_year"), "authors": _authors(work),
         "venue": ((work.get("primary_location") or {}).get("source") or {}).get("display_name"),
-        "cited_by_count": int(work.get("cited_by_count") or 0),
+        "cited_by_count": total_citations,
+        "recent_citations": recent_citations,
+        "annualized_citations": annualized_citations,
         "is_domestic": is_domestic, "query": query, "abstract": abstract,
         "pdf_url": (work.get("best_oa_location") or {}).get("pdf_url"),
+        "github_repositories": [],
         "type": "domestic" if is_domestic else "international",
-        "signal": f"{'국내 소속' if is_domestic else '국내 기관 소속 미확인'} · {work.get('publication_year') or '연도 미확인'} · 인용 {int(work.get('cited_by_count') or 0)}회",
+        "signal": f"{'국내 소속' if is_domestic else '국내 기관 소속 미확인'} · {work.get('publication_year') or '연도 미확인'} · 인용 {total_citations}회",
         "meta": f"분류={'국내 연구' if is_domestic else '국내 기관 소속 미확인'}; 발행={work.get('publication_date') or '미확인'}; DOI={doi or '없음'}",
     }
 
 
+def _enrich_candidate_with_github(candidate: dict) -> dict:
+    """Inspect the paper landing page and verify only its explicitly linked code repositories."""
+    landing = candidate.get("link") or ""
+    if not landing.startswith("https://"):
+        return candidate
+    html_url = _arxiv_html_url(landing) or landing
+    html_text = net.get_text(html_url, timeout=20, quiet=True, record=False)
+    if not html_text:
+        return candidate
+    candidate["_landing_html"] = html_text
+    links = _extract_code_links(html_text)
+    if links:
+        candidate["github_repositories"] = _verify_public_github_repositories(links)
+    return candidate
+
+
 def discover_candidates() -> list[dict]:
-    """Collect domestic-affiliated and international research, deduplicated by DOI/URL."""
+    """Collect relevant papers, enrich top candidates with verified GitHub signals, then rank."""
     collected: dict[str, dict] = {}
-    # Balance a bounded search batch across English and Korean queries.
-    # Keep the request batch balanced but modest; net.request retries a single 429 response.
-    selected_terms = SEARCH_TERMS[:4] + SEARCH_TERMS[12:16]
-    for index, term in enumerate(selected_terms):
+    for index, (term, sort_order) in enumerate(SEARCH_PLAN):
         params = {
             "search": term,
             "filter": "type:article|preprint,is_retracted:false,from_publication_date:2019-01-01",
             "per-page": 20,
-            "sort": "publication_date:desc",
+            "sort": sort_order,
         }
         data = net.get_json(OPENALEX_API, params=params, timeout=25)
         if not isinstance(data, dict):
@@ -278,16 +295,53 @@ def discover_candidates() -> list[dict]:
             previous = collected.get(key)
             if previous is None or item["cited_by_count"] > previous["cited_by_count"]:
                 collected[key] = item
-        # Avoid sending a burst of anonymous requests to OpenAlex.
-        if index < len(selected_terms) - 1:
+        if index < len(SEARCH_PLAN) - 1:
             time.sleep(1.0)
 
     candidates = list(collected.values())
-    candidates.sort(key=lambda p: (p.get("publication_date") or "", p.get("cited_by_count", 0)), reverse=True)
-    domestic = sum(1 for item in candidates if item["is_domestic"])
-    print(f"[논문 후보] OpenAlex {len(candidates)}편 (국내 소속 연구 {domestic}, 해외/국제 연구 {len(candidates)-domestic})")
-    return candidates
+    for item in candidates:
+        _apply_attention_score(item)
 
+    # Avoid fetching publisher pages for every result. Enrich the highest preliminary
+    # citation/recency candidates; verified repositories can then change final ranking.
+    candidates.sort(
+        key=lambda item: (
+            item.get("priority_score", 0),
+            item.get("publication_date") or "",
+            item.get("cited_by_count", 0),
+        ),
+        reverse=True,
+    )
+    for index, item in enumerate(candidates[:GITHUB_ENRICH_LIMIT]):
+        _enrich_candidate_with_github(item)
+        _apply_attention_score(item)
+        if index < min(GITHUB_ENRICH_LIMIT, len(candidates)) - 1:
+            time.sleep(0.35)
+
+    candidates.sort(
+        key=lambda item: (
+            item.get("priority_score", 0),
+            item.get("publication_date") or "",
+            item.get("cited_by_count", 0),
+        ),
+        reverse=True,
+    )
+    eligible = [item for item in candidates if item.get("priority_score", 0) >= MIN_PRIORITY_SCORE]
+    selected = eligible[:MAX_FINAL_CANDIDATES]
+    domestic = sum(1 for item in selected if item["is_domestic"])
+    github_count = sum(1 for item in selected if item.get("github_repositories"))
+    print(
+        f"[논문 후보] 검색 {len(candidates)}편 → 관심도 기준 통과 {len(eligible)}편 → "
+        f"상위 {len(selected)}편 (국내 소속 {domestic}, GitHub 확인 {github_count})"
+    )
+    if candidates and not selected:
+        print(
+            f"[논문 후보] 인용 추이 또는 활성 GitHub 저장소 등 관심도 신호가 부족해 "
+            f"자동 리뷰 후보를 만들지 않았습니다 (기준 {MIN_PRIORITY_SCORE}/100)."
+        )
+    for item in selected[:8]:
+        print(f"[논문 순위] {item['priority_score']:>3}/100 · {item['title'][:72]} · {item['signal']}")
+    return selected
 
 def _arxiv_html_url(url: str) -> str | None:
     match = re.search(r"arxiv\.org/(?:abs|pdf)/([0-9.]+(?:v[0-9]+)?)", url or "")
