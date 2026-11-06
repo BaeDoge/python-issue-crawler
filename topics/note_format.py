@@ -81,15 +81,17 @@ def parse_note_text(
                 continue
             h = _HEADING_RE.match(line) or _BOLD_HEADING_RE.match(line)
             if h:
-                normalized = _norm(h.group(1))
-                if normalized in names or allow_dynamic_sections:
-                    flush()
-                    heading = names.get(normalized) or _clean_inline(h.group(1))
-                    if _norm(heading) in {"출처", "sources", "references", "참고문헌"}:
-                        current, buf = None, []
-                    else:
-                        current, buf = heading, []
-                    continue
+                is_nested_heading = line.lstrip().startswith("###")
+                if not (allow_dynamic_sections and is_nested_heading and current is not None):
+                    normalized = _norm(h.group(1))
+                    if normalized in names or allow_dynamic_sections:
+                        flush()
+                        heading = names.get(normalized) or _clean_inline(h.group(1))
+                        if _norm(heading) in {"출처", "sources", "references", "참고문헌"}:
+                            current, buf = None, []
+                        else:
+                            current, buf = heading, []
+                        continue
         if stripped.count("```") % 2 == 1:
             in_fence = not in_fence
         if current is not None:
