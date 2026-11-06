@@ -598,7 +598,13 @@ def run_topic(spec: TopicSpec) -> dict:
             "영문 발행 대상은 발행 단계에서 자동으로 보류됩니다."
         )
 
-    history.mark_used(spec.key, chosen.get("link"), chosen["title"])
+    if wants_english and not en_path:
+        print(
+            f"[{spec.key}] 영문판이 준비되지 않아 '{chosen['title']}'을 작성 이력에 기록하지 않습니다. "
+            "번역 문제를 해결한 뒤 같은 후보를 다시 시도할 수 있습니다."
+        )
+    else:
+        history.mark_used(spec.key, chosen.get("link"), chosen["title"])
 
     print(f"\n저장됨: {rendered['path']}")
     if result.get("attempts", 1) > 1:
