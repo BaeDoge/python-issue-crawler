@@ -119,7 +119,8 @@ def render_note(
 
     body_parts = []
     for header, content in sections.items():
-        if re.sub(r"[\\s\\d.:：*#()`\[\]-]+", "", header).casefold() in {"출처", "sources", "references", "참고문헌"}:
+        normalized_header = "".join(ch for ch in header.casefold() if ch.isalnum())
+        if normalized_header in {"출처", "sources", "references", "참고문헌"}:
             continue
         safe_content, _ = normalize_mdx_text(normalize_code_fences(content))
         block = f"## {header}\n\n{safe_content}\n"
