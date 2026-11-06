@@ -213,6 +213,17 @@ def _publish_to_repo(
         result["message"] = f"{name}: 생성된 MDX 파일을 찾을 수 없습니다: {note_path}"
         return result
 
+    # An English-enabled target is a bilingual destination, not an optional fallback.
+    en_posts_dir = target.get("en_posts_dir")
+    en_note_path = note_path.parent / "en" / note_path.name
+    if en_posts_dir and not en_note_path.is_file():
+        result["stage"] = "영문 MDX 사전 확인"
+        result["message"] = (
+            f"{name}: 영문 MDX가 없어 발행을 중단했습니다: {en_note_path}. "
+            "이 대상은 한국어·영어 파일이 모두 준비된 경우에만 발행합니다."
+        )
+        return result
+
     try:
         stage = "작업 트리 상태 확인"
         dirty = _run_git(repo_path, "status", "--porcelain", stage=stage)
@@ -247,10 +258,8 @@ def _publish_to_repo(
             note_content = note_content.replace("/blogs/", image_url_prefix + "/")
         dest_path.write_text(note_content, encoding="utf-8", newline="\n")
 
-        en_posts_dir = target.get("en_posts_dir")
-        en_note_path = note_path.parent / "en" / note_path.name
         en_dest_path = None
-        if en_posts_dir and en_note_path.is_file():
+        if en_posts_dir:
             en_dest_path = repo_path / _safe_relative(en_posts_dir) / note_path.name
             en_dest_path.parent.mkdir(parents=True, exist_ok=True)
             en_content = en_note_path.read_text(encoding="utf-8")
@@ -258,9 +267,6 @@ def _publish_to_repo(
             if image_url_prefix != "/blogs":
                 en_content = en_content.replace("/blogs/", image_url_prefix + "/")
             en_dest_path.write_text(en_content, encoding="utf-8", newline="\n")
-        elif en_posts_dir:
-            print(f"{name}: 영문 MDX가 없어 한국어판만 발행합니다: {en_note_path}")
-
         stage = "이미지 복사"
         images_dir = _safe_relative(target["images_dir"])
         copied_images = []
