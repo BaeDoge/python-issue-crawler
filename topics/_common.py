@@ -81,7 +81,7 @@ def _has_non_polite_korean(text: str) -> bool:
     value = re.sub(tick + r"[^" + tick + r"]*" + tick, " ", value)
     plain_endings = re.compile(
         r"(?:한다|된다|있다|없다|이다|였다|했다|하였다|아니다|"
-        r"해|했어|돼|됐어|있어|없어|야|지|(?<!니)다)\s*[.!?。]\s*[\"'’”)]*$"
+        r"(?<!니)다)\s*[.!?。]\s*[\"'’”)]*$"
     )
     return any(
         plain_endings.search(sentence.strip())
