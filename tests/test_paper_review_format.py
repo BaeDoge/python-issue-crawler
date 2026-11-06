@@ -1,9 +1,16 @@
 import unittest
 
 from topics.note_format import parse_note_text
+from topics._common import _has_non_polite_korean
 
 
 class FlexiblePaperNoteFormatTests(unittest.TestCase):
+    def test_detects_academic_plain_style_and_accepts_polite_style(self):
+        self.assertTrue(_has_non_polite_korean("이 연구는 지연 시간을 줄인다."))
+        self.assertTrue(_has_non_polite_korean("모델의 성능이 중요하다."))
+        self.assertFalse(_has_non_polite_korean("이 연구는 지연 시간을 줄입니다."))
+        self.assertFalse(_has_non_polite_korean("이 부분은 조금 더 살펴볼 수 있어요."))
+
     def test_dynamic_sections_accept_paper_specific_headings(self):
         raw = """제목: [논문리뷰] KV 캐시 압축
 요약: 긴 문맥 추론에서 KV 캐시 메모리를 줄이는 연구를 정리합니다.
