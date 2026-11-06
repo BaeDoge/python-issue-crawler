@@ -148,7 +148,11 @@ def discover_candidates() -> list[dict]:
     collected: dict[str, dict] = {}
     # Balance a bounded search batch across English and Korean queries.
     # Keep the request batch balanced but modest; net.request retries a single 429 response.
-    selected_terms = SEARCH_TERMS[:4] + SEARCH_TERMS[12:16]
+    selected_terms = [
+        SEARCH_TERMS[0], SEARCH_TERMS[1], SEARCH_TERMS[2], SEARCH_TERMS[3],
+        SEARCH_TERMS[6], SEARCH_TERMS[7], SEARCH_TERMS[8],
+        SEARCH_TERMS[12], SEARCH_TERMS[13], SEARCH_TERMS[14], SEARCH_TERMS[15],
+    ]
     for index, term in enumerate(selected_terms):
         params = {
             "search": term,
