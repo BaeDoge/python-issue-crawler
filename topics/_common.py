@@ -73,6 +73,21 @@ def _strip_think(s: str) -> str:
     return re.sub(r"<think>.*?</think>", "", s, flags=re.DOTALL).strip()
 
 
+def _has_non_polite_korean(text: str) -> bool:
+    """Detect common declarative plain-style endings in paper-review prose."""
+    value = re.sub(r"\x60\x60\x60[\\s\\S]*?\x60\x60\x60", " ", text or "")
+    value = re.sub(r"\x60[^\x60]*\x60", " ", value)
+    plain_endings = re.compile(
+        r"(?:한다|된다|있다|없다|이다|였다|했다|하였다|아니다|"
+        r"(?<!니)다)\\s*[.!?。]\\s*[\\"'’”)]*$"
+    )
+    return any(
+        plain_endings.search(sentence.strip())
+        for sentence in re.split(r"(?<=[.!?。])\\s+|\\n+", value)
+        if sentence.strip()
+    )
+
+
 def has_real_code(content: str) -> bool:
     """코드블록 중 주석/빈 줄이 아닌 줄이 하나라도 있는 블록이 있는가.
     ('// 코드 수정 불가' 같은 형식만 맞춘 더미 블록을 걸러내기 위함)"""
@@ -266,6 +281,12 @@ def _deterministic_check(
                     f"저장소 경로가 실제 Git 트리에서 확인되지 않음: {preview}{remainder}. "
                     "경로를 실제 파일 목록에 맞춰 수정하거나, 확인되지 않는 경로 언급을 삭제할 것"
                 )
+
+        if spec.flexible_sections and _has_non_polite_korean(all_text):
+            issues.append(
+                "논문 리뷰에 '-한다/-이다/-했다' 문장체가 섞여 있습니다. "
+                "트러블슈팅·알고리즘 글처럼 자연스러운 존댓말('-습니다/-해요')로 전체 문장을 고쳐 쓸 것"
+            )
 
         issues += detect_foreign_language_mixing(all_text)
         return {"passed": not issues, "issues": issues}
