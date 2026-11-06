@@ -20,6 +20,33 @@ SEARCH_TERMS = [
 MAX_PAPERS = 80
 MIN_ABSTRACT_CHARS = 180
 
+# Papers whose main contribution is outside software/computing are filtered before LLM selection.
+_DEVELOPER_FOCUS = re.compile(
+    r"\\b(software|programming|code generation|compiler|database|distributed system|"
+    r"computer vision|natural language processing|large language model|language model|"
+    r"machine learning|deep learning|neural network|retrieval|vector database|"
+    r"inference|model editing|model compression|model serving|architecture|algorithm|"
+    r"operating system|cloud computing|network|cybersecurity|information retrieval|"
+    r"data engineering|gpu|robotics|software engineering|benchmark|optimization)\\b",
+    re.I,
+)
+_NON_DEVELOPER_TITLE = re.compile(
+    r"(diplomac|diplomatic|international law|constitutional law|legal framework|"
+    r"pedagogical|language education|language learning|korean language learning|"
+    r"teaching strategy|curriculum|clinical practice|patient care|nursing education|"
+    r"public policy|social work|tourism management|marketing strategy|"
+    r"교육 전략|언어 교육|한국어 학습|외교|면책 특권|국제법|간호 교육|환자 관리)",
+    re.I,
+)
+
+
+def _is_developer_focused(title: str, abstract: str) -> bool:
+    """Require a concrete software/computing connection and reject unrelated domain papers."""
+    if _NON_DEVELOPER_TITLE.search(title or ""):
+        return False
+    return bool(_DEVELOPER_FOCUS.search(f"{title or ''} {abstract or ''}"))
+
+
 
 def _abstract_from_index(index: dict | None) -> str:
     if not isinstance(index, dict):
@@ -50,6 +77,8 @@ def _is_korean_affiliated(work: dict) -> bool:
 def _candidate(work: dict, query: str) -> dict | None:
     title = (work.get("title") or "").strip()
     abstract = _abstract_from_index(work.get("abstract_inverted_index"))
+    if not _is_developer_focused(title, abstract):
+        return None
     doi = work.get("doi")
     paper_id = work.get("id", "")
     landing = ((work.get("best_oa_location") or {}).get("landing_page_url") or doi or paper_id)
@@ -131,6 +160,38 @@ def _extract_code_links(text: str) -> list[str]:
             unique.append(clean)
     return unique[:12]
 
+def _verify_public_github_repositories(links: list[str]) -> list[str]:
+    """Keep only repository links that GitHub's repository endpoint confirms exist."""
+    verified = []
+    seen = set()
+    for url in links[:6]:
+        match = re.match(r"https?://github\.com/([^/]+)/([^/?#]+)", url, re.I)
+        if not match:
+            continue
+        owner, repo_name = match.group(1), match.group(2).removesuffix(".git")
+        key = f"{owner}/{repo_name}".casefold()
+        if key in seen or owner.casefold() in {"features", "topics", "collections"}:
+            continue
+        seen.add(key)
+        data = net.get_json(
+            f"https://api.github.com/repos/{owner}/{repo_name}",
+            timeout=12, quiet=True, record=False,
+        )
+        if isinstance(data, dict) and data.get("full_name"):
+            verified.append(f"https://github.com/{data['full_name']}")
+        if len(verified) >= 3:
+            break
+    return verified
+
+
+def _readable_html_text(raw_html: str) -> str:
+    soup = BeautifulSoup(raw_html or "", "html.parser")
+    for element in soup(["script", "style", "nav", "header", "footer", "form", "noscript"]):
+        element.decompose()
+    article = soup.find("article") or soup.find("main") or soup
+    return re.sub(r"\s+", " ", article.get_text(" ", strip=True)).strip()
+
+
 def build_context(chosen: dict) -> dict:
     abstract = (chosen.get("abstract") or "").strip()
     landing = chosen.get("link") or ""
@@ -149,34 +210,43 @@ def build_context(chosen: dict) -> dict:
     evidence = [abstract]
     sources = [{"platform": "OpenAlex / 논문 원문", "title": chosen["title"], "url": landing,
                 "author": ", ".join(chosen.get("authors") or []) or None}]
+
     if chosen.get("pdf_url"):
         parts.extend(["", f"공개 PDF: {chosen['pdf_url']}"])
         sources.append({"platform": "Open Access PDF", "title": "논문 PDF", "url": chosen["pdf_url"], "author": None})
 
-    arxiv_html_url = _arxiv_html_url(landing)
-    html_url = arxiv_html_url or (landing if landing.startswith("https://") and "doi.org/" not in landing else None)
+    html_url = landing if landing.startswith("https://") else None
     if html_url:
-        html_text = net.get_text(html_url, timeout=25)
+        html_text = net.get_text(html_url, timeout=25, quiet=True, record=False)
         if html_text:
-            full_text = BeautifulSoup(html_text, "html.parser").get_text(" ", strip=True)
-            if arxiv_html_url and len(full_text) > 1000:
-                parts.extend(["", "arXiv HTML 원문 발췌:", full_text[:14000]])
-                evidence.append(full_text[:14000])
-                sources.append({"platform": "arXiv HTML 원문", "title": chosen["title"], "url": html_url, "author": None})
+            full_text = _readable_html_text(html_text)
+            if len(full_text) > 1800:
+                excerpt = full_text[:14000]
+                parts.extend([
+                    "", "접근 가능한 원문 HTML 발췌 (논문 전문 전체를 확인했다는 뜻은 아님):",
+                    excerpt,
+                ])
+                evidence.append(excerpt)
+                sources.append({"platform": "접근 가능한 논문 HTML", "title": chosen["title"],
+                                "url": html_url, "author": None})
+
             code_links = _extract_code_links(html_text)
-            if code_links:
-                parts.extend(["", "논문 페이지에서 확인한 GitHub 코드 링크:"] + [f"- {url}" for url in code_links])
-                sources.extend({"platform": "논문 연결 코드", "title": url.rsplit("/", 1)[-1], "url": url, "author": None} for url in code_links)
-            else:
-                parts.extend(["", "공식 코드 링크: 논문 페이지에서 확인되지 않음. URL을 만들어내지 말 것."])
-    else:
-        parts.extend(["", "공식 코드 링크: 확인 가능한 원문 HTML에서 찾지 못함. 코드가 공개되어 있다고 추정하지 말 것."])
+            verified_repos = _verify_public_github_repositories(code_links)
+            if verified_repos:
+                parts.extend([
+                    "", "공식 논문 페이지에서 연결되었고 GitHub API로 저장소 존재를 확인한 링크:",
+                ] + [f"- {url}" for url in verified_repos])
+                sources.extend({
+                    "platform": "GitHub 저장소", "title": url.rstrip("/").split("/")[-1],
+                    "url": url, "author": None,
+                } for url in verified_repos)
 
     parts.extend([
-        "", "분석 시 주의:",
-        "- 초록만 확보된 경우 논문 전체의 실험 설정, 수치, 한계가 확인된 것처럼 작성하지 말 것.",
-        "- 초록의 주장을 한국어로 번역하되, 저자 주장과 작성자의 해석을 구분할 것.",
-        "- 코드 링크가 확인되지 않으면 공식 구현 공개 여부를 확인할 수 없다고 명시할 것.",
+        "", "분석 범위와 주의:",
+        "- 확보된 원문 발췌가 초록뿐이면 초록에서 직접 확인할 수 있는 내용만 분석할 것.",
+        "- 원문에 수치나 비교 결과가 없으면 임의의 성능 수치나 우위를 쓰지 말 것.",
+        "- 공식 GitHub 저장소 링크가 위에 제공된 경우에만 저장소 관련 내용을 작성할 것. 그 외에는 코드 섹션을 만들지 말 것.",
+        "- 저자의 주장과 작성자의 해석을 구분하고, 확인되지 않은 구현 세부사항은 추측하지 말 것.",
     ])
     return {
         "context_text": "\n".join(parts), "review_context": "\n".join(evidence),
