@@ -87,7 +87,8 @@ def parse_note_text(
                     if normalized in names or allow_dynamic_sections:
                         flush()
                         heading = names.get(normalized) or _clean_inline(h.group(1))
-                        if _norm(heading).casefold() in {"출처", "sources", "references", "참고문헌"}:
+                        normalized_heading = _norm(heading).casefold()
+                        if normalized_heading.startswith(("출처", "sources", "references", "참고문헌", "참고자료")):
                             current, buf = None, []
                         else:
                             current, buf = heading, []
