@@ -79,6 +79,17 @@ Accuracy and latency can vary by task and model.
         self.assertIn("A → B → C", restored)
 
 
+    def test_restores_original_flow_fence_language(self):
+        from topics.translate import restore_code_blocks
+
+        korean = "내용\n\n```flow\nA → B\n```"
+        translated = "Text\n\n```text\nA → B\n```"
+
+        restored = restore_code_blocks(translated, korean)
+
+        self.assertIn("```flow", restored)
+
+
     def test_rejects_missing_or_reordered_section_markers(self):
         raw = """Title: [Paper Review] Example
 Summary: Example summary.
