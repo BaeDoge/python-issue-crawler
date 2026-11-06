@@ -140,6 +140,8 @@ def _translate_flexible_result(spec, ko: dict, raw: str) -> tuple[dict | None, l
     issues = []
     if not parsed["title"].startswith(spec.category_prefix_en):
         issues.append(f"Title must start with '{spec.category_prefix_en}'")
+    if not parsed["summary"].strip():
+        issues.append("영문 Summary가 비어 있음")
     if _HANGUL.search(_outside_code(parsed["title"] + " " + parsed["summary"])):
         issues.append("Title/Summary에 한글이 남아 있음")
 
