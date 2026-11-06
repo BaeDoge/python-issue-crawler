@@ -75,18 +75,19 @@ def _strip_think(s: str) -> str:
 
 def _has_non_polite_korean(text: str) -> bool:
     """Detect common declarative plain-style endings in paper-review prose."""
-    value = re.sub(r"\x60\x60\x60[\\s\\S]*?\x60\x60\x60", " ", text or "")
-    value = re.sub(r"\x60[^\x60]*\x60", " ", value)
+    fence = chr(96) * 3
+    tick = chr(96)
+    value = re.sub(fence + r"[\s\S]*?" + fence, " ", text or "")
+    value = re.sub(tick + r"[^" + tick + r"]*" + tick, " ", value)
     plain_endings = re.compile(
         r"(?:한다|된다|있다|없다|이다|였다|했다|하였다|아니다|"
-        r"(?<!니)다)\\s*[.!?。]\\s*[\\"'’”)]*$"
+        r"(?<!니)다)\s*[.!?。]\s*[\"'’”)]*$"
     )
     return any(
         plain_endings.search(sentence.strip())
-        for sentence in re.split(r"(?<=[.!?。])\\s+|\\n+", value)
+        for sentence in re.split(r"(?<=[.!?。])\s+|\n+", value)
         if sentence.strip()
     )
-
 
 def has_real_code(content: str) -> bool:
     """코드블록 중 주석/빈 줄이 아닌 줄이 하나라도 있는 블록이 있는가.
