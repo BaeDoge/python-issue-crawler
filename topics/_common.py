@@ -170,6 +170,22 @@ def _writer_prompt(spec: TopicSpec, chosen_title: str, context_text: str) -> str
             "- 제목은 일반 Markdown '## 제목'만 사용하고, '##' 자체를 굵게 감싸지 말 것\n"
         )
 
+    shared_rules += (
+        "MDX 시각 요소 사용 규칙:\n"
+        "- 기본 Markdown만으로 설명이 충분하면 그대로 쓴다. 시각 요소는 독자의 이해를 실제로 돕는 경우에만 1~3종 정도 선택한다.\n"
+        "- 핵심 주의/요약은 <Callout type=\"info|tip|warning|success\" title=\"짧은 제목\">내용</Callout>을 사용할 수 있다.\n"
+        "- 실제 수치가 중요할 때만 <StatGrid><Stat value=\"실제 수치\" label=\"측정 항목\" detail=\"조건 또는 출처\" /></StatGrid>를 사용한다. 수치나 단위를 추측하지 않는다.\n"
+        "- 순서가 중요한 과정은 <Steps><Step title=\"단계 제목\">설명</Step></Steps>로 나타낼 수 있다.\n"
+        "- 두 접근을 같은 기준으로 비교할 수 있을 때는 <Compare><ComparePanel title=\"기존\" tone=\"bad\">...</ComparePanel><ComparePanel title=\"제안\" tone=\"good\">...</ComparePanel></Compare>를 쓴다.\n"
+        "- 실제 셸 명령을 설명할 때는 <Terminal title=\"실행 예시\"> 안에 언어가 지정된 코드 블록을 넣을 수 있다. 실행하지 않은 명령을 실행 결과처럼 쓰지 않는다.\n"
+        "- 실제 저장소 파일 트리를 확보한 경우에만 <FileTree title=\"저장소 구조\"> 안에 경로를 표시한다. 파일/폴더를 지어내지 않는다.\n"
+        "- 실제로 수집한 이미지 URL이 있고 본문 설명에 필요한 경우에만 <Figure src=\"이미지 URL\" alt=\"설명\" caption=\"그림 설명\" />를 사용한다. 이미지 출처를 반드시 남긴다.\n"
+        "- 버전 변화나 사건의 시간 순서가 중요할 때는 <Timeline><TimelineItem date=\"날짜\" title=\"이벤트\">설명</TimelineItem></Timeline>을 사용할 수 있다.\n"
+        "- 체크할 항목이 실제로 있을 때만 <Checklist><ul><li>항목</li></ul></Checklist>를 쓴다.\n"
+        "- 이미 flow 코드 블록이 가장 명확한 표현이라면 기존 flow를 우선하고, 같은 정보를 다른 컴포넌트로 중복 표현하지 않는다.\n"
+        "- 지원하지 않는 JSX 태그나 임의 속성을 만들지 말고, MDX 컴포넌트는 닫는 태그까지 정확히 작성한다.\n"
+    )
+
     if spec.flexible_sections:
         output_structure = (
             "제목: [논문리뷰] 논문의 핵심 주제\n"
