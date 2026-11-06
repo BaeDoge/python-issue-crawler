@@ -22,7 +22,7 @@ SEARCH_TERMS = [
     "컴퓨터 비전", "자연어 처리", "소프트웨어 공학", "데이터베이스",
 ]
 MAX_PAPERS = 24
-MAX_REPOSITORY_CHECKS = 16
+MAX_REPOSITORY_CHECKS = 12
 MIN_REVIEW_PRIORITY_SCORE = 25
 MIN_ABSTRACT_CHARS = 180
 
@@ -213,12 +213,12 @@ def _extract_code_links(text: str) -> list[str]:
     return unique[:12]
 
 def _verify_public_github_repositories(
-    links: list[str], *, include_readme: bool = True
+    links: list[str], *, include_readme: bool = True, max_repositories: int = 3
 ) -> list[dict]:
     """Keep only confirmed public repositories; optionally retrieve README evidence."""
     verified = []
     seen = set()
-    for url in links[:6]:
+    for url in links[:max(1, max_repositories) * 2]:
         match = re.match(r"https?://github\.com/([^/]+)/([^/?#]+)", url, re.I)
         if not match:
             continue
@@ -259,7 +259,7 @@ def _verify_public_github_repositories(
                 except (ValueError, TypeError):
                     pass
         verified.append(item)
-        if len(verified) >= 3:
+        if len(verified) >= max(1, max_repositories):
             break
     return verified
 
@@ -324,7 +324,7 @@ def _enrich_research_interest(candidates: list[dict]) -> list[dict]:
     for index, paper in enumerate(shortlist):
         landing = paper.get("link") or ""
         page_url = _arxiv_html_url(landing) or landing
-        html = net.get_text(page_url, timeout=20, quiet=True, record=False) if page_url.startswith("https://") else None
+        html = net.get_text(page_url, timeout=12, quiet=True, record=False) if page_url.startswith("https://") else None
         repositories = []
         if html:
             readable = _readable_html_text(html)
@@ -332,7 +332,7 @@ def _enrich_research_interest(candidates: list[dict]) -> list[dict]:
                 paper["_paper_text_excerpt"] = readable[:14000]
             repository_links = _extract_code_links(html)
             repositories = _verify_public_github_repositories(
-                repository_links, include_readme=False
+                repository_links, include_readme=False, max_repositories=1
             )
 
         paper["github_repositories"] = repositories
@@ -439,7 +439,7 @@ def build_context(chosen: dict) -> dict:
     repositories = chosen.get("github_repositories") or []
     if repositories:
         repo_urls = [repo.get("url") for repo in repositories if repo.get("url")]
-        verified_repositories = _verify_public_github_repositories(repo_urls, include_readme=True)
+        verified_repositories = _verify_public_github_repositories(repo_urls, include_readme=True, max_repositories=3)
         if verified_repositories:
             parts.extend(["", "논문 페이지에서 연결되었고 GitHub API로 존재를 확인한 저장소:"])
             for repository in verified_repositories:
