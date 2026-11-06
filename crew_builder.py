@@ -30,7 +30,10 @@ def build_scout_agent(*, judging_criteria: str) -> Agent:
     )
 
 
-def build_writer_agent(*, role: str, goal: str, backstory: str, long_form: bool = False) -> Agent:
+def build_writer_agent(
+    *, role: str, goal: str, backstory: str, long_form: bool = False,
+    conversational_polite: bool = False,
+) -> Agent:
     style_guardrails = (
         "장문 기술 블로그 작성 모드: 자연스럽게 이어지는 설명형 문체를 사용하고, 독자가 배경·핵심 원리·실제 사례·한계까지 "
         "이해하도록 충분히 설명한다. 짧게 쓰라는 기본 규칙보다 주제별 분량과 분석 지침을 우선한다. "
@@ -39,6 +42,14 @@ def build_writer_agent(*, role: str, goal: str, backstory: str, long_form: bool 
         "출처는 실제로 읽은 공식 자료에만 연결한다."
         if long_form else COMMON_GUARDRAILS
     )
+    if conversational_polite:
+        style_guardrails += (
+            "\n\n한국어 문체 규칙: 트러블슈팅·알고리즘 글과 같은 자연스러운 편한 존댓말로 작성한다. "
+            "독자에게 차근차근 설명하듯 '-습니다', '-해요', '-할 수 있어요'를 자연스럽게 사용한다. "
+            "'-한다', '-이다', '-했다'로 끝나는 논문 초록식 문장이나 반말은 사용하지 않는다. "
+            "불필요하게 딱딱한 '본 논문은 ...을 제시한다'를 반복하지 말고, '이 연구에서는 ...을 살펴봅니다'처럼 자연스럽게 쓴다. "
+            "한 문장에 전문 용어를 여러 개 몰아넣지 말고, 짧은 문장과 적절한 문단 나눔을 사용한다."
+        )
     return Agent(
         role=role,
         goal=goal,
