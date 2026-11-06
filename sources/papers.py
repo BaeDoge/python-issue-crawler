@@ -22,12 +22,12 @@ MIN_ABSTRACT_CHARS = 180
 
 # Papers whose main contribution is outside software/computing are filtered before LLM selection.
 _DEVELOPER_FOCUS = re.compile(
-    r"\\b(software|programming|code generation|compiler|database|distributed system|"
+    r"\b(software|programming|code generation|compiler|database|distributed system|"
     r"computer vision|natural language processing|large language model|language model|"
     r"machine learning|deep learning|neural network|retrieval|vector database|"
     r"inference|model editing|model compression|model serving|architecture|algorithm|"
     r"operating system|cloud computing|network|cybersecurity|information retrieval|"
-    r"data engineering|gpu|robotics|software engineering|benchmark|optimization)\\b",
+    r"data engineering|gpu|robotics|software engineering|benchmark|optimization)\b",
     re.I,
 )
 _NON_DEVELOPER_TITLE = re.compile(
