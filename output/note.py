@@ -62,6 +62,26 @@ def _slugify(title: str, content_type: str) -> str:
     return f"{content_type}-{datetime.now():%Y%m%d-%H%M%S}"
 
 
+def _unique_sources(sources: list[dict]) -> list[dict]:
+    """Keep one link per canonical URL so DOI, HTML and PDF labels cannot duplicate one URL."""
+    unique = []
+    seen = set()
+    for source in sources:
+        url = str(source.get("url") or "").strip()
+        if not url.startswith(("https://", "http://")):
+            continue
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        host = (parsed.netloc or "").lower().removeprefix("www.")
+        path = (parsed.path or "").rstrip("/").lower()
+        key = f"{host}{path}"
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        unique.append({**source, "url": url})
+    return unique
+
+
 def _source_line(src: dict) -> str:
     platform = src.get("platform") or "원문"
     label = src.get("title") or src["url"]
@@ -82,7 +102,7 @@ def render_note(
     sources: [{"platform","title","url","author"}]  images: [{"section","local_path","source_url","platform","author","alt"}]
     반환: {"path","meta_path","slug","image_files"}  (image_files의 local_path는 out_dir/public/blogs 안의 복사본)"""
     out_dir.mkdir(parents=True, exist_ok=True)
-    sources = list(sources or [])
+    sources = _unique_sources(list(sources or []))
     images = images or []
 
     slug = _slugify(title, content_type)
@@ -128,6 +148,7 @@ def render_note(
             block += f"\n![{img.get('alt', header)}]({img['url']})\n"
         body_parts.append(block)
 
+    sources = _unique_sources(sources)
     if sources:
         src_block = "## 출처\n\n" + "\n".join(_source_line(s) for s in sources) + "\n"
         if image_files:
