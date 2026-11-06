@@ -566,28 +566,45 @@ def run_topic(spec: TopicSpec) -> dict:
     )
 
     en_path = None
-    wants_english = result["passed"] and any(target.get("en_posts_dir") for target in PUBLISH_TARGETS)
-    if wants_english:
-        if spec.flexible_sections or not spec.category_prefix_en or len(spec.section_names_en) != len(spec.section_names):
-            print(f"[{spec.key}] 유동형 목차 번역 매핑이 없어 영문판 생성을 건너뜁니다.")
+    english_targets = [target for target in PUBLISH_TARGETS if target.get("en_posts_dir")]
+    wants_english = bool(english_targets)
+
+    if wants_english and result["passed"]:
+        if not spec.category_prefix_en:
+            print(f"[{spec.key}] 영문 발행 대상이 있지만 category_prefix_en 설정이 없어 번역할 수 없습니다.")
         else:
             en_data = translate_note(spec, data)
             if en_data:
+                section_map = en_data.get("section_map") or dict(zip(spec.section_names, spec.section_names_en))
                 en_rendered = render_note_en(
                     ko_result=rendered,
                     title=en_data["title"],
                     summary=en_data["summary"],
                     tag=spec.tag,
                     sections=en_data["sections"],
-                    section_map=dict(zip(spec.section_names, spec.section_names_en)),
+                    section_map=section_map,
                     out_dir=OUTPUT_DIR / spec.key,
                 )
                 en_path = en_rendered["en_path"]
                 print(f"영문 MDX 저장됨: {en_path}")
             else:
-                print(f"[{spec.key}] 영문 번역 검증에 실패해 영문판만 생략합니다. 한국어 글은 유지됩니다.")
+                print(
+                    f"[{spec.key}] 영문 번역 검증에 실패했습니다. "
+                    "영문 발행이 필요한 대상은 발행 단계에서 자동으로 보류됩니다."
+                )
+    elif wants_english:
+        print(
+            f"[{spec.key}] 한국어 글이 최종 품질 검수를 통과하지 못해 영문판을 만들지 않았습니다. "
+            "영문 발행 대상은 발행 단계에서 자동으로 보류됩니다."
+        )
 
-    history.mark_used(spec.key, chosen.get("link"), chosen["title"])
+    if wants_english and not en_path:
+        print(
+            f"[{spec.key}] 영문판이 준비되지 않아 '{chosen['title']}'을 작성 이력에 기록하지 않습니다. "
+            "번역 문제를 해결한 뒤 같은 후보를 다시 시도할 수 있습니다."
+        )
+    else:
+        history.mark_used(spec.key, chosen.get("link"), chosen["title"])
 
     print(f"\n저장됨: {rendered['path']}")
     if result.get("attempts", 1) > 1:
