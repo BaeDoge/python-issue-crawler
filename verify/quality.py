@@ -130,6 +130,31 @@ def _mask_non_prose(text: str) -> str:
 _CHINESE_FUNCTION_CHARS = frozenset("的是了在不有我你他她它们这那和与为对从将被把可以一个我们你们他们她们其并及等")
 
 
+def detect_non_honorific_korean_tone(text: str) -> list[str]:
+    """논문/장문 글의 본문이 반말 또는 평서형 '-다' 문체로 작성됐는지 검사합니다."""
+    prose = _mask_non_prose(text)
+    sentences = [
+        item.strip().strip('"“”\'‘’)]} ')
+        for item in re.split(r"(?<=[.!?。！？])\\s+|[\\r\\n]+", prose)
+        if item.strip()
+    ]
+    plain_endings = re.compile(
+        r"(?<!니)(?:다|야|해|돼|했어|했지|했냐|있어|없어|이야|거야|임)[.!?…]?$"
+    )
+    informal = [sentence for sentence in sentences if plain_endings.search(sentence)]
+    if not informal:
+        return []
+    ratio = len(informal) / max(1, len(sentences))
+    if len(informal) >= 2 or ratio >= 0.15:
+        examples = " / ".join(informal[:2])
+        return [
+            "본문에 반말 또는 논문체 평서형 '-다' 문장이 있습니다. "
+            "트러블슈팅·알고리즘 글처럼 편안한 존댓말('-요'/'-습니다')로 바꿀 것: "
+            + examples[:180]
+        ]
+    return []
+
+
 def detect_foreign_language_mixing(text: str) -> list[str]:
     """Flag clear Japanese/Chinese prose without treating every Han character as foreign text.
 
