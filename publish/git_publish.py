@@ -348,6 +348,8 @@ def publish_note(
     category = {
         "algorithm": "algorithm",
         "troubleshooting": "troubleshooting",
+        "paper-review": "paper",
+        "paper": "paper",
         "opensource": "opensource",
     }.get(
         (content_type or "troubleshooting").strip().lower(),
