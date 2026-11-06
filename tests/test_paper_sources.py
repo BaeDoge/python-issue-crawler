@@ -56,6 +56,12 @@ class PaperSourceTests(unittest.TestCase):
                 "대규모 분산 시스템에서 데이터베이스 처리 성능을 개선합니다.",
             )
         )
+        self.assertTrue(
+            _is_developer_focused(
+                "AI agent tool-use benchmark",
+                "We evaluate agentic systems and function calling for software tasks.",
+            )
+        )
 
     def test_does_not_guess_code_repository(self):
         self.assertEqual(_extract_code_links("No official implementation is linked."), [])
