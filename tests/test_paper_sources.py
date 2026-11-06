@@ -42,6 +42,12 @@ class PaperSourceTests(unittest.TestCase):
                 "This study focuses on teaching strategy and language learning.",
             )
         )
+        self.assertFalse(
+            _is_developer_focused(
+                "Social network theory and civic participation",
+                "We study network effects in communities and public institutions.",
+            )
+        )
 
     def test_keeps_computing_research(self):
         self.assertTrue(
