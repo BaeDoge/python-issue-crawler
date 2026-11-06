@@ -44,8 +44,14 @@ def _unwrap_outer_fence(text: str) -> str:
     return text
 
 
-def parse_note_text(raw: str, section_names: list) -> dict | None:
-    """반환: {"title","summary","sections":{이름: 본문}} — 아무것도 못 알아보면 None."""
+def parse_note_text(
+    raw: str, section_names: list, *, allow_dynamic_sections: bool = False
+) -> dict | None:
+    """반환: {"title","summary","sections":{이름: 본문}} — 아무것도 못 알아보면 None.
+
+    allow_dynamic_sections=True이면 미리 정한 목차가 아닌 ##/### 제목도 본문 섹션으로 받습니다.
+    출처 목록은 렌더러가 별도로 붙이므로 본문 섹션에서는 제외합니다.
+    """
     text = re.sub(r"<think>.*?</think>", "", raw or "", flags=re.DOTALL).strip()
     text = _unwrap_outer_fence(text)
     if not text:
@@ -74,10 +80,16 @@ def parse_note_text(raw: str, section_names: list) -> dict | None:
                 summary = _clean_inline(m.group(1))
                 continue
             h = _HEADING_RE.match(line) or _BOLD_HEADING_RE.match(line)
-            if h and _norm(h.group(1)) in names:
-                flush()
-                current, buf = names[_norm(h.group(1))], []
-                continue
+            if h:
+                normalized = _norm(h.group(1))
+                if normalized in names or allow_dynamic_sections:
+                    flush()
+                    heading = names.get(normalized) or _clean_inline(h.group(1))
+                    if _norm(heading) in {"출처", "sources", "references", "참고문헌"}:
+                        current, buf = None, []
+                    else:
+                        current, buf = heading, []
+                    continue
         if stripped.count("```") % 2 == 1:
             in_fence = not in_fence
         if current is not None:
