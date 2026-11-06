@@ -1,8 +1,12 @@
+import base64
 import unittest
 
 from unittest.mock import patch
 
-from sources.papers import _abstract_from_index, _candidate, _extract_code_links, _arxiv_html_url, discover_candidates
+from sources.papers import (
+    _abstract_from_index, _candidate, _extract_code_links, _arxiv_html_url,
+    _is_developer_focused, _verify_public_github_repositories, discover_candidates,
+)
 
 
 class PaperSourceTests(unittest.TestCase):
@@ -15,7 +19,7 @@ class PaperSourceTests(unittest.TestCase):
     def test_classifies_korean_affiliated_research(self):
         abstract = " ".join(f"word{i}" for i in range(40))
         work = {
-            "title": "A research paper",
+            "title": "A database system research paper",
             "id": "https://openalex.org/W123",
             "abstract_inverted_index": {word: [i] for i, word in enumerate(abstract.split())},
             "authorships": [{"institutions": [{"country_code": "KR"}]}],
@@ -26,6 +30,46 @@ class PaperSourceTests(unittest.TestCase):
         self.assertTrue(item["is_domestic"])
         self.assertEqual(item["type"], "domestic")
 
+    def test_filters_papers_outside_development_scope(self):
+        self.assertFalse(
+            _is_developer_focused(
+                "Digital diplomacy and legal immunity",
+                "This paper discusses international law and diplomatic policy.",
+            )
+        )
+        self.assertFalse(
+            _is_developer_focused(
+                "Generative AI in Korean language education",
+                "This study focuses on teaching strategy and language learning.",
+            )
+        )
+        self.assertFalse(
+            _is_developer_focused(
+                "Social network theory and civic participation",
+                "We study network effects in communities and public institutions.",
+            )
+        )
+
+    def test_keeps_computing_research(self):
+        self.assertTrue(
+            _is_developer_focused(
+                "Reducing interference in large language model knowledge editing",
+                "We study model editing algorithms for large language models.",
+            )
+        )
+        self.assertTrue(
+            _is_developer_focused(
+                "분산 데이터베이스의 쿼리 최적화",
+                "대규모 분산 시스템에서 데이터베이스 처리 성능을 개선합니다.",
+            )
+        )
+        self.assertTrue(
+            _is_developer_focused(
+                "AI agent tool-use benchmark",
+                "We evaluate agentic systems and function calling for software tasks.",
+            )
+        )
+
     def test_does_not_guess_code_repository(self):
         self.assertEqual(_extract_code_links("No official implementation is linked."), [])
 
@@ -35,6 +79,30 @@ class PaperSourceTests(unittest.TestCase):
             _extract_code_links(html),
             ["https://github.com/example/research-code"],
         )
+
+    @patch("sources.papers.net.get_json")
+    def test_repository_must_exist_and_readme_is_loaded(self, mock_get_json):
+        mock_get_json.side_effect = [
+            {
+                "full_name": "example/research-code",
+                "html_url": "https://github.com/example/research-code",
+                "description": "Reference implementation",
+                "default_branch": "main",
+            },
+            {
+                "encoding": "base64",
+                "content": base64.b64encode(b"# Research code\\nRun with Python.").decode("ascii"),
+            },
+        ]
+
+        repositories = _verify_public_github_repositories(
+            ["https://github.com/example/research-code"]
+        )
+
+        self.assertEqual(len(repositories), 1)
+        self.assertEqual(repositories[0]["full_name"], "example/research-code")
+        self.assertIn("Run with Python", repositories[0]["readme_excerpt"])
+        self.assertEqual(mock_get_json.call_count, 2)
 
     def test_maps_arxiv_abstract_to_html(self):
         self.assertEqual(
