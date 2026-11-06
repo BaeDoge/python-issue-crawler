@@ -65,6 +65,8 @@ def restore_code_blocks(en_text: str, ko_text: str) -> str:
         if original is None:
             return match.group(0)
         translated = match.group(0)
+        if _block_language(translated) != _block_language(original):
+            return original
         if _block_language(original) == "flow":
             return translated if _flow_structure(translated) == _flow_structure(original) else original
         return translated if _code_signature(translated) == _code_signature(original) else original
