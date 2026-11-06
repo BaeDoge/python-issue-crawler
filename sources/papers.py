@@ -23,7 +23,7 @@ MIN_ABSTRACT_CHARS = 180
 # Papers whose main contribution is outside software/computing are filtered before LLM selection.
 _DEVELOPER_FOCUS = re.compile(
     r"\b(software|programming|code generation|compiler|database|distributed system|"
-    r"computer vision|natural language processing|large language model|language model|"
+    r"computer vision|natural language processing|large language model|language model|agentic|agents?|tool use|function calling|"
     r"machine learning|deep learning|neural network|retrieval|vector database|"
     r"inference|model editing|model compression|model serving|architecture|algorithm|"
     r"operating system|cloud computing|network|cybersecurity|information retrieval|"
@@ -226,7 +226,7 @@ def build_context(chosen: dict) -> dict:
         parts.extend(["", f"공개 PDF: {chosen['pdf_url']}"])
         sources.append({"platform": "Open Access PDF", "title": "논문 PDF", "url": chosen["pdf_url"], "author": None})
 
-    html_url = landing if landing.startswith("https://") else None
+    html_url = (_arxiv_html_url(landing) or landing) if landing.startswith("https://") else None
     if html_url:
         html_text = net.get_text(html_url, timeout=25, quiet=True, record=False)
         if html_text:
