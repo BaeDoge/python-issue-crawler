@@ -26,7 +26,7 @@ PUBLIC_IMAGE_URL_PREFIX = "/blogs"  # mdx에서 참조하는 URL 경로
 
 _KNOWN_LANGS = {
     "python", "py", "bash", "sh", "shell", "zsh", "powershell", "ps1", "cmd", "bat", "console",
-    "text", "txt", "json", "yaml", "yml", "toml", "ini", "sql", "diff", "html", "css", "xml",
+    "text", "txt", "json", "yaml", "yml", "toml", "ini", "sql", "diff", "html", "css", "xml", "flow",
     "javascript", "js", "typescript", "ts", "tsx", "jsx", "java", "c", "cpp", "go", "rust", "dockerfile",
 }
 _FENCE_RE = re.compile(r"```(.*?)```", re.DOTALL)
@@ -119,6 +119,8 @@ def render_note(
 
     body_parts = []
     for header, content in sections.items():
+        if re.sub(r"[\\s\\d.\\-:：*#`()\\[\\]]+", "", header).casefold() in {"출처", "sources", "references", "참고문헌"}:
+            continue
         safe_content, _ = normalize_mdx_text(normalize_code_fences(content))
         block = f"## {header}\n\n{safe_content}\n"
         for img in section_images.get(header, []):
