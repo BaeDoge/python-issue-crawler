@@ -1,10 +1,11 @@
+import base64
 import unittest
 
 from unittest.mock import patch
 
 from sources.papers import (
     _abstract_from_index, _candidate, _extract_code_links, _arxiv_html_url,
-    _is_developer_focused, discover_candidates,
+    _is_developer_focused, _verify_public_github_repositories, discover_candidates,
 )
 
 
@@ -78,6 +79,30 @@ class PaperSourceTests(unittest.TestCase):
             _extract_code_links(html),
             ["https://github.com/example/research-code"],
         )
+
+    @patch("sources.papers.net.get_json")
+    def test_repository_must_exist_and_readme_is_loaded(self, mock_get_json):
+        mock_get_json.side_effect = [
+            {
+                "full_name": "example/research-code",
+                "html_url": "https://github.com/example/research-code",
+                "description": "Reference implementation",
+                "default_branch": "main",
+            },
+            {
+                "encoding": "base64",
+                "content": base64.b64encode(b"# Research code\\nRun with Python.").decode("ascii"),
+            },
+        ]
+
+        repositories = _verify_public_github_repositories(
+            ["https://github.com/example/research-code"]
+        )
+
+        self.assertEqual(len(repositories), 1)
+        self.assertEqual(repositories[0]["full_name"], "example/research-code")
+        self.assertIn("Run with Python", repositories[0]["readme_excerpt"])
+        self.assertEqual(mock_get_json.call_count, 2)
 
     def test_maps_arxiv_abstract_to_html(self):
         self.assertEqual(
