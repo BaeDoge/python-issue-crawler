@@ -24,7 +24,10 @@ from crewai import Task, Crew, Process
 import history
 from config import OUTPUT_DIR, LOG_DIR, QUALITY_ATTEMPTS, PUBLISH_TARGETS
 from crew_builder import build_scout_agent, build_writer_agent, build_reviewer_agent
-from verify.quality import refine_loop, detect_foreign_language_mixing, build_revision_prompt
+from verify.quality import (
+    refine_loop, detect_foreign_language_mixing,
+    detect_non_honorific_korean_tone, build_revision_prompt,
+)
 from verify.repository_paths import find_unverified_repository_paths as _find_unverified_repository_paths
 from topics.note_format import parse_note_text
 from output.note import render_note, render_note_en, _FENCE_RE
@@ -104,7 +107,8 @@ def _writer_prompt(spec: TopicSpec, chosen_title: str, context_text: str) -> str
             f"{spec.long_form_guidance}\n\n"
         )
         evidence_rules = (
-            "- 논문에 명시된 사실, 저자가 주장한 내용, 리뷰어의 해석을 문장 안에서 구분할 것\n"
+            "- 논문에 명시된 사실, 저자가 주장한 내용, 리뷰어의 해석을 문장 안에서 구분할 것\n"            "- 본문은 반말이나 논문체 평서형 '-다'로 쓰지 말고, 편안하고 자연스러운 존댓말로 작성할 것. '-요'와 '-습니다'를 문맥에 맞게 섞어도 됨\n"
+            "- 독자에게 설명하듯 '이 방식은 이런 문제를 줄여줘요', '다만 이 부분은 확인이 필요합니다'처럼 자연스럽게 쓸 것\n"
             "- 논문 원문/초록에서 확인되지 않는 수치, 데이터셋, 알고리즘 단계, 코드 경로를 만들지 말 것\n"
             "- 공식 GitHub 저장소가 참고 자료에 '존재 확인된 링크'로 제공된 경우에만 저장소를 다룰 것. "
             "그때도 실제로 확인한 범위만 설명하고, 저장소 링크가 없으면 코드·재현 섹션 자체를 만들지 말 것\n"
@@ -261,6 +265,10 @@ def _deterministic_check(
                 )
 
         issues += detect_foreign_language_mixing(all_text)
+        if spec.flexible_sections:
+            issues += detect_non_honorific_korean_tone(
+                "\n".join((content or "") for _, content in section_items)
+            )
         return {"passed": not issues, "issues": issues}
     return check
 
@@ -427,8 +435,23 @@ def run_topic(spec: TopicSpec) -> dict:
 
     scout = build_scout_agent(judging_criteria=spec.scout_criteria)
     candidates_text = json.dumps(
-        [{"title": c["title"], "signal": c.get("signal"), "source": c.get("source"), "meta": c.get("meta")}
-         for c in candidates],
+        [{
+            "title": c["title"],
+            "signal": c.get("signal"),
+            "source": c.get("source"),
+            "meta": c.get("meta"),
+            "priority_score": c.get("priority_score", 0),
+            "attention_reasons": c.get("attention_reasons", []),
+            "github_repositories": [
+                {
+                    "full_name": repository.get("full_name"),
+                    "stars": repository.get("stargazers_count", 0),
+                    "forks": repository.get("forks_count", 0),
+                    "pushed_at": repository.get("pushed_at"),
+                }
+                for repository in (c.get("github_repositories") or [])
+            ],
+        } for c in candidates],
         ensure_ascii=False,
     )
     scout_task = Task(
