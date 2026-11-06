@@ -135,7 +135,7 @@ def detect_non_honorific_korean_tone(text: str) -> list[str]:
     prose = _mask_non_prose(text)
     sentences = [
         item.strip().strip('"“”\'‘’)]} ')
-        for item in re.split(r"(?<=[.!?。！？])\\s+|[\\r\\n]+", prose)
+        for item in re.split(r"(?<=[.!?。！？])\s+|[\r\n]+", prose)
         if item.strip()
     ]
     plain_endings = re.compile(
