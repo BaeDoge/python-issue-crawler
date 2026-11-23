@@ -143,6 +143,12 @@ uv run engine.py --topic paper-review --count 3
 - 모델별 실제 API 요청이 1회씩 발생하므로, OpenRouter 등 무료 제공사의 일일 요청 한도와 토큰 사용량에 포함됩니다. 필요한 모델만 지정해서 실행하세요.
 - HTTP 429는 사용량/속도 제한, 401/403은 인증/권한, 5xx와 timeout은 제공사 또는 네트워크 일시 오류를 우선 의심하세요. `auto`나 combo 모델은 실제 선택된 백엔드를 OmniRoute Request Logs에서 확인해야 합니다.
 
+## OpenAlex API 인증
+
+- 선택 설정 `OPENALEX_API_KEY`를 지정하면 논문 후보 검색 요청에 Bearer 인증 헤더로 적용합니다.
+- OpenAlex의 무료 API 키는 익명 호출보다 일일 예산을 높여주며, API 키가 없으면 익명 방식으로 동작합니다.
+- 예전 `mailto` 파라미터는 현재 인증/한도 상향 수단이 아니므로 `OPENALEX_MAILTO`는 설정하지 않아도 됩니다.
+
 ## 논문 리뷰의 자료 범위
 
 - 논문 메타데이터와 초록은 OpenAlex에서 수집하며, 저자 소속 기관에 대한민국 기관이 포함되면 국내 연구로 분류합니다. 저자의 국적이나 논문 게재 국가를 의미하지 않습니다.
