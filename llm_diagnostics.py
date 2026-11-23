@@ -194,6 +194,7 @@ def run_llm_diagnose() -> bool:
     print(f"Endpoint: {_safe_base_url()}")
     print("저장: 모델 ID, 역할, HTTP 상태, 지연 시간, 토큰 수, 축약된 오류")
     print("미저장: API 키, 프롬프트, 생성 응답 본문")
+    print("주의: 테스트 모델마다 실제 API 요청 1회가 발생하며 무료 사용량/속도 제한에 포함됩니다.")
     print("-" * 64)
 
     catalog = _check_model_catalog()
