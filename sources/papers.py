@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+import os
 import re
 import time
 from datetime import date, datetime
@@ -13,6 +14,7 @@ from bs4 import BeautifulSoup
 from sources import net
 
 OPENALEX_API = "https://api.openalex.org/works"
+OPENALEX_API_KEY = os.getenv("OPENALEX_API_KEY", "").strip()
 SEARCH_TERMS = [
     "large language models", "retrieval augmented generation", "AI agents",
     "multimodal learning", "computer vision", "natural language processing",
@@ -160,7 +162,8 @@ def discover_candidates() -> list[dict]:
             "per-page": 20,
             "sort": "publication_date:desc",
         }
-        data = net.get_json(OPENALEX_API, params=params, timeout=25)
+        headers = {"Authorization": f"Bearer {OPENALEX_API_KEY}"} if OPENALEX_API_KEY else None
+        data = net.get_json(OPENALEX_API, params=params, headers=headers, timeout=25)
         if not isinstance(data, dict):
             print(f"[논문] OpenAlex 검색 실패: {term}")
             continue
