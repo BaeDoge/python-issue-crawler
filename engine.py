@@ -46,7 +46,9 @@ def _parse_args():
                         help="한 편 생성에 실패하면 남은 반복을 중단")
     parser.add_argument("--no-publish", action="store_true", help="생성만 하고 발행 대상 저장소에는 올리지 않음")
     parser.add_argument("--diagnose", action="store_true",
-                        help="소스별 접속 상태를 점검하고 실패 원인을 출력 (후보가 안 나올 때 먼저 실행)")
+                        help="자료 수집 소스와 LLM 모델 연결을 함께 진단")
+    parser.add_argument("--llm-diagnose", action="store_true",
+                        help="OmniRoute를 통해 역할별/추가 지정 모델의 실제 생성 호출을 테스트")
     parser.add_argument("--publish-draft", metavar="MDX_PATH",
                         help="이미 생성된(보류 중인) mdx 초안을 포트폴리오 레포에 발행")
     return parser.parse_args()
@@ -120,7 +122,16 @@ def main():
 
     if args.diagnose:
         from diagnose import run_diagnose
+        from llm_diagnostics import run_llm_diagnose
         run_diagnose()
+        if not run_llm_diagnose():
+            raise SystemExit(1)
+        return
+
+    if args.llm_diagnose:
+        from llm_diagnostics import run_llm_diagnose
+        if not run_llm_diagnose():
+            raise SystemExit(1)
         return
 
     if args.discover_opensource:
