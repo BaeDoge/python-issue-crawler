@@ -111,6 +111,9 @@ uv run engine.py --topic both --no-publish
 
 ```bash
 uv run engine.py --diagnose
+
+# LLM 연결만 별도로 검사
+uv run engine.py --llm-diagnose
 ```
 
 주기 실행:
@@ -130,6 +133,14 @@ uv run engine.py --topic paper-review
 ```bash
 uv run engine.py --topic paper-review --count 3
 ```
+
+## OmniRoute LLM 연결 진단
+
+- `uv run engine.py --llm-diagnose`는 Scout/Writer/Verifier에 설정된 모델을 짧게 실제 호출해 HTTP 상태와 응답 여부, 지연 시간, 토큰 사용량을 확인합니다.
+- 제공사별 라우트를 각각 확인하려면 `GET /v1/models` 또는 OmniRoute 대시보드에서 정확한 모델 ID를 확인한 뒤 `.env`의 `OMNIROUTE_DIAG_MODELS`에 쉼표로 구분해 지정하세요.
+- `uv run engine.py --diagnose`는 기존 자료 수집 진단에 LLM 진단을 추가해 두 영역을 한 번에 점검합니다.
+- 결과는 `logs/llm_diagnostics_latest.json`에 저장됩니다. API 키, 프롬프트, 생성 응답 본문은 기록하지 않습니다.
+- HTTP 429는 사용량/속도 제한, 401/403은 인증/권한, 5xx와 timeout은 제공사 또는 네트워크 일시 오류를 우선 의심하세요. `auto`나 combo 모델은 실제 선택된 백엔드를 OmniRoute Request Logs에서 확인해야 합니다.
 
 ## 논문 리뷰의 자료 범위
 
