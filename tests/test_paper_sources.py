@@ -153,5 +153,18 @@ class PaperSourceTests(unittest.TestCase):
             )
 
 
+    @patch("sources.papers.time.sleep")
+    @patch("sources.papers.OPENALEX_API_KEY", "openalex-test-key")
+    @patch("sources.papers.net.get_json", return_value={"results": []})
+    def test_discovery_uses_openalex_api_key_as_bearer_header(self, mock_get_json, mock_sleep):
+        discover_candidates()
+        self.assertGreater(mock_get_json.call_count, 0)
+        for call in mock_get_json.call_args_list:
+            self.assertEqual(
+                call.kwargs["headers"],
+                {"Authorization": "Bearer openalex-test-key"},
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
