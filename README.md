@@ -181,3 +181,11 @@ uv run engine.py --topic paper-review --count 3
 ## 라이선스
 
 저장소의 `LICENSE` 파일을 참고하세요.
+
+
+## Troubleshooting quality loop
+
+- Troubleshooting stops redundant local rewrite calls when the same review findings persist.
+- A topic-specific revision guide aligns the reproduced error, cause, and corrective code with the collected source. A deterministic check rejects Python `for`/`while` examples whose only body statement is `pass`.
+- Optional cloud repair is disabled by default. Set `CLOUD_REPAIR_ENABLED=true` to let one external repair model revise a locally written troubleshooting draft that still fails review. The revised draft must pass the same deterministic checks and a final LLM review before publication.
+- `OMNIROUTE_MODEL_REPAIRER` chooses the repair Combo/model; when empty it reuses `OMNIROUTE_MODEL_VERIFIER`. This extra repair and final review consume external API quota.
