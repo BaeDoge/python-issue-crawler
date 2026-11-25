@@ -7,7 +7,7 @@ CrewAI 에이전트 공통 빌더
 """
 
 from crewai import Agent
-from config import llm_scout, llm_writer, llm_verifier, llm_translator
+from config import llm_scout, llm_writer, llm_verifier, llm_translator, llm_repairer
 
 COMMON_GUARDRAILS = (
     "⚠️ 항상 지킬 것: (1) 오직 한국어로만 쓴다 — 다른 언어 문자가 섞이면 안 된다. "
@@ -80,6 +80,25 @@ def build_reviewer_agent(
         llm=llm_verifier,
         verbose=True,
         max_iter=2,
+        respect_context_window=True,
+    )
+
+
+def build_cloud_repair_agent(*, role: str, goal: str, backstory: str) -> Agent:
+    """마지막 로컬 재작성 후에도 실패한 글을 외부 모델이 한 번만 교정한다."""
+    return Agent(
+        role=role,
+        goal=goal,
+        backstory=(
+            f"{backstory}\\n\\n"
+            "검수자가 지적한 구체적 결함만 해결하는 기술 편집자다. "
+            "원문 근거와 기존 글의 일치 여부를 다시 판단하고, 불필요한 문단은 추가하지 않는다. "
+            "현상·원인·해결 방법의 코드와 설명이 서로 모순되지 않도록 전체 흐름을 확인한다. "
+            "실행하지 않은 코드를 실행했다고 주장하지 않으며, 출처에 없는 사실을 만들어내지 않는다."
+        ),
+        llm=llm_repairer,
+        verbose=True,
+        max_iter=1,
         respect_context_window=True,
     )
 
