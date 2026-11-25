@@ -392,8 +392,8 @@ def _refine_with_retries(*, writer_agent, critic_agent, initial_prompt: str,
                          review_context: str = "", revision_guidance: str = "") -> dict:
     """검수 사이클을 반복하고, 통과 결과가 없으면 가장 나은 초안을 보존한다.
 
-    장문 주제는 같은 검수 지적이 반복될 때 재작성 루프를 조기에 종료해 토큰과 시간을 낭비하지 않는다.
-    짧은 알고리즘/트러블슈팅 주제는 기존 재시도 동작을 유지한다.
+    장문 및 트러블슈팅 주제는 같은 검수 지적이 반복되면 재작성 루프를 조기에 종료한다.
+    특히 트러블슈팅은 무의미한 동일 수정 반복을 막기 위해 최대 2회 시도만 허용한다.
     """
     configured_attempts = max(1, QUALITY_ATTEMPTS)
     attempts = min(configured_attempts, 2) if stop_on_repeated_issues else configured_attempts
