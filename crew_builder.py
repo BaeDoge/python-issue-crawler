@@ -90,7 +90,7 @@ def build_cloud_repair_agent(*, role: str, goal: str, backstory: str) -> Agent:
         role=role,
         goal=goal,
         backstory=(
-            f"{backstory}\\n\\n"
+            f"{backstory}\n\n"
             "검수자가 지적한 구체적 결함만 해결하는 기술 편집자다. "
             "원문 근거와 기존 글의 일치 여부를 다시 판단하고, 불필요한 문단은 추가하지 않는다. "
             "현상·원인·해결 방법의 코드와 설명이 서로 모순되지 않도록 전체 흐름을 확인한다. "
