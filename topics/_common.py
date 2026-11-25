@@ -389,7 +389,7 @@ def _refine_with_retries(*, writer_agent, critic_agent, initial_prompt: str,
                          critique_instructions: str, expected_output: str,
                          deterministic_check_fn, max_rounds: int, log_prefix: str,
                          stop_on_repeated_issues: bool = False,
-                         review_context: str = "") -> dict:
+                         review_context: str = "", revision_guidance: str = "") -> dict:
     """검수 사이클을 반복하고, 통과 결과가 없으면 가장 나은 초안을 보존한다.
 
     장문 주제는 같은 검수 지적이 반복될 때 재작성 루프를 조기에 종료해 토큰과 시간을 낭비하지 않는다.
