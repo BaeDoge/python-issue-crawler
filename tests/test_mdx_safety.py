@@ -52,5 +52,34 @@ class MdxTextSafetyTests(unittest.TestCase):
         self.assertEqual(count, 0)
 
 
+    def test_converts_html_anchor_to_markdown_link(self):
+        source = '참고 링크: <a href="https://example.org/docs" target="_blank">공식 문서</a>'
+        actual, _ = normalize_mdx_text(source)
+        self.assertEqual(actual, "참고 링크: [공식 문서](https://example.org/docs)")
+
+    def test_removes_script_and_unknown_html_tags_from_prose(self):
+        source = '원문에 <script src="https://example.org/x.js"></script>와 <unknown-tag>본문</unknown-tag>가 있습니다.'
+        actual, _ = normalize_mdx_text(source)
+        self.assertNotIn("<script", actual.lower())
+        self.assertNotIn("</script>", actual.lower())
+        self.assertNotIn("<unknown-tag", actual.lower())
+        self.assertIn("본문", actual)
+
+    def test_preserves_raw_html_examples_inside_fenced_code(self):
+        fence = chr(96) * 3
+        source = "HTML 예제입니다.\n" + fence + "html\n<script>console.log(1)</script>\n" + fence + "\n"
+        actual, _ = normalize_mdx_text(source)
+        self.assertIn("<script>console.log(1)</script>", actual)
+
+    def test_converts_safe_html_image_to_markdown(self):
+        source = '<img src="/images/example.png" alt="예시 화면">'
+        actual, _ = normalize_mdx_text(source)
+        self.assertEqual(actual, "![예시 화면](/images/example.png)")
+
+    def test_preserves_supported_mdx_components(self):
+        source = '<Callout type="info">본문</Callout>'
+        actual, _ = normalize_mdx_text(source)
+        self.assertEqual(actual, source)
+
 if __name__ == "__main__":
     unittest.main()
