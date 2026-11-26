@@ -181,3 +181,19 @@ uv run engine.py --topic paper-review --count 3
 ## 라이선스
 
 저장소의 `LICENSE` 파일을 참고하세요.
+
+
+## Troubleshooting quality loop
+
+- Troubleshooting stops redundant local rewrite calls when the same review findings persist.
+- A topic-specific revision guide aligns the reproduced error, cause, and corrective code with the collected source. A deterministic check rejects Python `for`/`while` examples whose only body statement is `pass`.
+- Optional cloud repair is disabled by default. Set `CLOUD_REPAIR_ENABLED=true` to let one external repair model revise a locally written troubleshooting draft that still fails review. The revised draft must pass the same deterministic checks and a final LLM review before publication.
+- `OMNIROUTE_MODEL_REPAIRER` chooses the repair Combo/model; when empty it reuses `OMNIROUTE_MODEL_VERIFIER`. This extra repair and final review consume external API quota.
+
+
+### Version-aware troubleshooting references
+
+- Troubleshooting fetches the official pandas Copy-on-Write guide for pandas slice / chained-assignment topics when the official docs are reachable.
+- The same official excerpt is supplied to both the Writer and Verifier and is listed as a source in the resulting MDX.
+- Writer and revision instructions must distinguish the historical StackOverflow question context from current library behavior. Do not describe old warnings or APIs as current without matching official documentation.
+- If the optional official-doc fetch fails, the pipeline continues with the original question and accepted answer; it must not invent current-version behavior.

@@ -1,6 +1,23 @@
 import unittest
 
-from verify.quality import detect_foreign_language_mixing, extract_json
+from verify.quality import detect_foreign_language_mixing, extract_json, has_noop_loop_code
+
+
+class NoopLoopCodeTests(unittest.TestCase):
+    def test_detects_empty_loop_in_a_solution(self):
+        fence = chr(96) * 3
+        text = "해결 방법\n" + fence + "python\nfor item in data:\n    pass\n" + fence
+        self.assertTrue(has_noop_loop_code(text))
+
+    def test_allows_loop_that_performs_an_operation(self):
+        fence = chr(96) * 3
+        text = "해결 방법\n" + fence + "python\nfor item in data:\n    print(item)\n" + fence
+        self.assertFalse(has_noop_loop_code(text))
+
+    def test_ignores_non_python_code_blocks(self):
+        fence = chr(96) * 3
+        text = fence + "text\nfor item in data:\n    pass\n" + fence
+        self.assertFalse(has_noop_loop_code(text))
 
 
 class ForeignLanguageMixingTests(unittest.TestCase):

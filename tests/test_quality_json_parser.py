@@ -69,5 +69,16 @@ class ExtractJsonTests(unittest.TestCase):
         self.assertIsNone(extract_json('{"passed": false, "issues": "not a list"}'))
 
 
+    def test_revision_prompt_appends_topic_specific_guidance(self):
+        prompt = build_revision_prompt(
+            "원래 작성 지침",
+            "직전 초안",
+            ["해결 코드가 재현 코드와 맞지 않음"],
+            revision_guidance="현상과 해결 방법을 한 흐름으로 다시 검증할 것",
+        )
+        self.assertIn("현상과 해결 방법을 한 흐름으로 다시 검증할 것", prompt)
+        self.assertIn("직전 초안", prompt)
+
+
 if __name__ == "__main__":
     unittest.main()

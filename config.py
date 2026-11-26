@@ -62,6 +62,8 @@ def _omni_llm(model_alias: str, **overrides) -> LLM:
 SCOUT_MODEL = _role_model("OMNIROUTE_MODEL_SCOUT", "auto")
 WRITER_MODEL = _role_model("OMNIROUTE_MODEL_WRITER", "auto/quality")
 VERIFIER_MODEL = _role_model("OMNIROUTE_MODEL_VERIFIER", "auto/quality")
+REPAIRER_MODEL = _role_model("OMNIROUTE_MODEL_REPAIRER", VERIFIER_MODEL)
+CLOUD_REPAIR_ENABLED = os.getenv("CLOUD_REPAIR_ENABLED", "false").strip().lower() in ("1", "true", "yes")
 
 llm_scout = _omni_llm(SCOUT_MODEL, temperature=0.4, max_tokens=1536)
 # 추론 모델은 <think> 토큰도 max_tokens에 포함돼서, 값이 작으면 글이 중간에 끊깁니다.
@@ -74,6 +76,8 @@ llm_writer = _omni_llm(WRITER_MODEL, temperature=0.35, max_tokens=WRITER_MAX_TOK
 llm_translator = _omni_llm(WRITER_MODEL, temperature=0.2, max_tokens=WRITER_MAX_TOKENS)
 # More room prevents a thinking model from truncating structured review JSON after spending tokens on reasoning.
 llm_verifier = _omni_llm(VERIFIER_MODEL, temperature=0.0, max_tokens=VERIFIER_MAX_TOKENS)
+REPAIRER_MAX_TOKENS = max(2048, int(os.getenv("OMNIROUTE_REPAIRER_MAX_TOKENS", "6000")))
+llm_repairer = _omni_llm(REPAIRER_MODEL, temperature=0.15, max_tokens=REPAIRER_MAX_TOKENS)
 
 # -----------------------------------------------------------------------
 # 출력 / 로그

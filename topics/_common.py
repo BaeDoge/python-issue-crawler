@@ -22,9 +22,9 @@ from typing import Callable
 from crewai import Task, Crew, Process
 
 import history
-from config import OUTPUT_DIR, LOG_DIR, QUALITY_ATTEMPTS, PUBLISH_TARGETS
-from crew_builder import build_scout_agent, build_writer_agent, build_reviewer_agent
-from verify.quality import refine_loop, detect_foreign_language_mixing, build_revision_prompt
+from config import OUTPUT_DIR, LOG_DIR, QUALITY_ATTEMPTS, PUBLISH_TARGETS, CLOUD_REPAIR_ENABLED
+from crew_builder import build_scout_agent, build_writer_agent, build_reviewer_agent, build_cloud_repair_agent
+from verify.quality import refine_loop, detect_foreign_language_mixing, build_revision_prompt, has_noop_loop_code
 from verify.repository_paths import find_unverified_repository_paths as _find_unverified_repository_paths
 from topics.note_format import parse_note_text
 from output.note import render_note, render_note_en, _FENCE_RE
@@ -67,6 +67,8 @@ class TopicSpec:
     min_total_chars: int = 0
     # Paper reviews can choose headings that fit each paper instead of filling a fixed outline.
     flexible_sections: bool = False
+    # Extra guidance for revisions when a topic has domain-specific consistency requirements.
+    revision_guidance: str = ""
 
 
 def _strip_think(s: str) -> str:
@@ -273,6 +275,8 @@ def _deterministic_check(
             if name in spec.code_required_sections and not has_real_code(content):
                 issues.append(f"'{name}' 섹션에 실제 코드/에러 원문이 담긴 코드블록이 없음 "
                               "(주석만 있는 블록, 설명만 있는 경우는 인정되지 않음)")
+            if name == "해결 방법" and has_noop_loop_code(content):
+                issues.append("해결 방법에 동작이 없는 for/while 루프(pass만 실행)가 있습니다. 실제 예외를 제거하는 실행 가능한 수정 코드로 바꿀 것")
             for phrase in spec.forbidden_phrases.get(name, ()):
                 if phrase in content:
                     issues.append(f"'{name}' 섹션에 '{phrase}' 표현이 있음 — 독자가 실제로 따라 할 수 있는 "
@@ -385,11 +389,11 @@ def _refine_with_retries(*, writer_agent, critic_agent, initial_prompt: str,
                          critique_instructions: str, expected_output: str,
                          deterministic_check_fn, max_rounds: int, log_prefix: str,
                          stop_on_repeated_issues: bool = False,
-                         review_context: str = "") -> dict:
+                         review_context: str = "", revision_guidance: str = "") -> dict:
     """검수 사이클을 반복하고, 통과 결과가 없으면 가장 나은 초안을 보존한다.
 
-    장문 주제는 같은 검수 지적이 반복될 때 재작성 루프를 조기에 종료해 토큰과 시간을 낭비하지 않는다.
-    짧은 알고리즘/트러블슈팅 주제는 기존 재시도 동작을 유지한다.
+    장문 및 트러블슈팅 주제는 같은 검수 지적이 반복되면 재작성 루프를 조기에 종료한다.
+    특히 트러블슈팅은 무의미한 동일 수정 반복을 막기 위해 최대 2회 시도만 허용한다.
     """
     configured_attempts = max(1, QUALITY_ATTEMPTS)
     attempts = min(configured_attempts, 2) if stop_on_repeated_issues else configured_attempts
@@ -416,6 +420,7 @@ def _refine_with_retries(*, writer_agent, critic_agent, initial_prompt: str,
             log_prefix=f"{log_prefix}[시도 {attempt}/{attempts}] ",
             stop_on_repeated_issues=stop_on_repeated_issues,
             review_context=review_context,
+            revision_guidance=revision_guidance,
         )
         total_rounds += int(current.get("rounds", 0))
         all_history.extend({"attempt": attempt, **entry} for entry in current.get("history", []))
@@ -451,6 +456,7 @@ def _refine_with_retries(*, writer_agent, critic_agent, initial_prompt: str,
             retry_prompt = build_revision_prompt(
                 initial_prompt, str(current.get("raw", "")), issues,
                 stage=f"품질 검수 재시도 {attempt}",
+                revision_guidance=revision_guidance,
             )
             print(f"{log_prefix}시도 {attempt} 미통과. 지적 사항을 반영해 새 검수 사이클을 시작합니다.")
 
@@ -524,9 +530,57 @@ def run_topic(spec: TopicSpec) -> dict:
         ),
         max_rounds=spec.max_rounds,
         log_prefix=f"[{spec.key}] ",
-        stop_on_repeated_issues=bool(spec.long_form_guidance),
-        review_context=(ctx.get("review_context", "") if spec.long_form_guidance else ""),
+        stop_on_repeated_issues=bool(spec.long_form_guidance) or spec.key == "troubleshooting",
+        review_context=ctx.get("review_context", ""),
+        revision_guidance=spec.revision_guidance,
     )
+
+    # Optional one-shot external repair. Only failed troubleshooting drafts reach this path.
+    if not result["passed"] and spec.key == "troubleshooting" and CLOUD_REPAIR_ENABLED:
+        issues = _quality_issues(result)
+        if issues:
+            print(f"[{spec.key}] 로컬 재작성 후 미통과 — 외부 모델 최종 교정을 1회 시도합니다.")
+            try:
+                repair_agent = build_cloud_repair_agent(
+                    role="기술 콘텐츠 최종 편집자",
+                    goal="검수 지적과 원문 근거를 바탕으로 글의 핵심 오류를 바로잡는다",
+                    backstory="StackOverflow 해결 사례와 파이썬 동작 원리를 대조해 기술 문서를 교정한다.",
+                )
+                repair_prompt = build_revision_prompt(
+                    prompt, str(result.get("raw", "")), issues,
+                    stage="외부 모델 최종 교정",
+                    revision_guidance=spec.revision_guidance,
+                )
+                repaired = refine_loop(
+                    writer_agent=repair_agent,
+                    critic_agent=reviewer,
+                    initial_prompt=repair_prompt,
+                    critique_instructions=f"아래 '{spec.label}' 수정본을 원문 근거 및 검수 기준으로 최종 판정해라: {spec.reviewer_checklist}",
+                    expected_output=expected,
+                    deterministic_check_fn=_deterministic_check(
+                        spec, ctx.get("tree_paths"), bool(ctx.get("tree_complete", False))
+                    ),
+                    max_rounds=1,
+                    log_prefix=f"[{spec.key}] [외부 최종 교정] ",
+                    stop_on_repeated_issues=True,
+                    revision_guidance=spec.revision_guidance,
+                )
+                if repaired.get("passed"):
+                    result = {
+                        **repaired,
+                        "history": (result.get("history") or []) + (repaired.get("history") or []),
+                        "cloud_repair_attempted": True,
+                        "cloud_repair_passed": True,
+                    }
+                    print(f"[{spec.key}] 외부 모델 최종 교정 및 재검수 통과")
+                else:
+                    result["cloud_repair_attempted"] = True
+                    result["cloud_repair_passed"] = False
+                    print(f"[{spec.key}] 외부 모델 최종 교정도 미통과 — 자동 발행하지 않습니다.")
+            except Exception as exc:
+                result["cloud_repair_attempted"] = True
+                result["cloud_repair_error"] = f"{type(exc).__name__}: {str(exc)[:500]}"
+                print(f"[{spec.key}] 외부 모델 최종 교정 실패: {type(exc).__name__}: {str(exc)[:240]}")
 
     data = parse_note_text(
         result["raw"], spec.section_names,
@@ -545,6 +599,8 @@ def run_topic(spec: TopicSpec) -> dict:
 
     refine_meta = {
         "review_passed": result["passed"],
+        "cloud_repair_attempted": bool(result.get("cloud_repair_attempted", False)),
+        "cloud_repair_passed": result.get("cloud_repair_passed"),
         "refine_rounds": result["rounds"],
         "quality_attempts": result.get("attempts", 1),
         "best_quality_attempt": result.get("best_attempt", 1),
