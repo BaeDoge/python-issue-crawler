@@ -5,8 +5,19 @@ import re
 _FENCE_START_RE = re.compile(r"^\s*(`{3,}|~{3,})")
 _INLINE_CODE_RE = re.compile(r"(?<!`)(`+)(?!`)([^`\n]*?)\1(?!`)")
 _MDX_TAG_RE = re.compile(
-    r"</?[A-Za-z][A-Za-z0-9._:-]*(?:\s+[^<>]*?)?\s*/?>|<>|</>"
+    r"</?([A-Za-z][A-Za-z0-9._:-]*)(?:\s+[^<>]*?)?\s*/?>|<>|</>"
 )
+_ALLOWED_TAGS = {
+    "callout", "badge", "statgrid", "stat", "steps", "step", "compare",
+    "comparepanel", "terminal", "filetree", "figure", "timeline",
+    "timelineitem", "checklist", "kbd",
+    "a", "abbr", "b", "blockquote", "br", "caption", "cite", "code",
+    "dd", "del", "details", "div", "dl", "dt", "em", "figcaption",
+    "h1", "h2", "h3", "h4", "h5", "h6", "hr", "i", "img", "ins",
+    "li", "mark", "ol", "p", "picture", "pre", "q", "s", "small",
+    "source", "span", "strong", "sub", "summary", "sup", "table",
+    "tbody", "td", "tfoot", "th", "thead", "time", "tr", "u", "ul", "var",
+}
 _COMPARISON_RE = re.compile(r"(?<=\w)(\s*)<(?=\s|=|\d)")
 _ADJACENT_COMPARISON_RE = re.compile(r"(?<=\w)<(?=[A-Za-z0-9])")
 
@@ -56,9 +67,19 @@ def normalize_mdx_text(text: str) -> tuple[str, int]:
             protected.append(match.group(0))
             return f"\x00MDXSAFE{len(protected) - 1}\x00"
 
-        # Protect inline code and explicit JSX/HTML tags before editing prose.
+        # Protect inline code first, then retain only supported MDX and safe HTML tags.
         value = _INLINE_CODE_RE.sub(hold, line)
-        value = _MDX_TAG_RE.sub(hold, value)
+
+        def handle_tag(match: re.Match) -> str:
+            nonlocal replacements
+            tag_name = match.group(1)
+            raw = match.group(0)
+            if tag_name and tag_name.casefold() in _ALLOWED_TAGS:
+                return hold(match)
+            replacements += 1
+            return raw.replace("<", "&lt;").replace(">", "&gt;")
+
+        value = _MDX_TAG_RE.sub(handle_tag, value)
 
         def escape_comparison(match: re.Match) -> str:
             nonlocal replacements
