@@ -108,8 +108,9 @@ def _source_line(src: dict) -> str:
     label = _markdown_label(src.get("title") or src["url"])
     url = _markdown_url(src["url"])
     line = f"- {platform}: [{label}]({url})"
-    if src.get("author"):
-        line += f" — 작성자: {_markdown_label(src[\"author\"])}"
+    author = src.get("author")
+    if author:
+        line += f" — 작성자: {_markdown_label(author)}"
     if src.get("platform") == "StackOverflow":
         line += " (CC BY-SA)"
     return line
