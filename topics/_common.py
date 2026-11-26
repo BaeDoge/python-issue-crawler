@@ -186,6 +186,7 @@ def _writer_prompt(spec: TopicSpec, chosen_title: str, context_text: str) -> str
         "- 체크할 항목이 실제로 있을 때만 <Checklist><ul><li>항목</li></ul></Checklist>를 쓴다.\n"
         "- 이미 flow 코드 블록이 가장 명확한 표현이라면 기존 flow를 우선하고, 같은 정보를 다른 컴포넌트로 중복 표현하지 않는다.\n"
         "- 지원하지 않는 JSX 태그나 임의 속성을 만들지 말고, MDX 컴포넌트는 닫는 태그까지 정확히 작성한다.\n"
+        "- 원본 링크나 설명에 포함된 <script>, <style>, <iframe> 및 임의 XML/HTML 태그 문자열은 실제 MDX 컴포넌트로 출력하지 말 것. 코드 인라인 또는 &lt;tag&gt; 형식의 텍스트로 표현할 것.\n"
     )
 
     if spec.flexible_sections:
