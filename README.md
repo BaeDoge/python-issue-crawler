@@ -197,3 +197,12 @@ uv run engine.py --topic paper-review --count 3
 - The same official excerpt is supplied to both the Writer and Verifier and is listed as a source in the resulting MDX.
 - Writer and revision instructions must distinguish the historical StackOverflow question context from current library behavior. Do not describe old warnings or APIs as current without matching official documentation.
 - If the optional official-doc fetch fails, the pipeline continues with the original question and accepted answer; it must not invent current-version behavior.
+
+
+## Troubleshooting source quality
+
+- Korean blog references are filtered against the original question and accepted answer. Broad matches such as "Python" or "DataFrame" are insufficient when the source contains a specific warning/exception marker.
+- The Writer and Verifier receive the same primary Q&A evidence plus any fetched official documentation. The Verifier can therefore check whether the article changed the reproduction or invented a cause.
+- For the pandas `SettingWithCopyWarning` source, the exact original statement, historical pandas 0.16.2 context, upstream-slice explanation, and distinction between copying a subset and mutating the parent DataFrame are provided explicitly.
+- The pandas official-doc excerpt includes the introductory version history (CoW first introduced in 1.5.0, optimizations in 2.0/2.1, default mode in 3.0), not only the later "Previous behavior" section.
+- Failed official-document retrieval or extraction is logged; an official source is added to the article only when a usable excerpt was actually retrieved.
