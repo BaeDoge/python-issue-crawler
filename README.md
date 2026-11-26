@@ -206,3 +206,18 @@ uv run engine.py --topic paper-review --count 3
 - For the pandas `SettingWithCopyWarning` source, the exact original statement, historical pandas 0.16.2 context, upstream-slice explanation, and distinction between copying a subset and mutating the parent DataFrame are provided explicitly.
 - The pandas official-doc excerpt includes the introductory version history (CoW first introduced in 1.5.0, optimizations in 2.0/2.1, default mode in 3.0), not only the later "Previous behavior" section.
 - Failed official-document retrieval or extraction is logged; an official source is added to the article only when a usable excerpt was actually retrieved.
+
+
+## Baejoon bilingual article publishing
+
+For a Next.js content tree with category subdirectories, configure the Baejoon target like this:
+
+```json
+{
+  "posts_dir": "content",
+  "en_posts_dir": "content/en",
+  "category_subdirs": true
+}
+```
+
+The publisher writes Korean articles to `content/<category>/<slug>.mdx` and English articles to `content/en/<category>/<slug>.mdx`. Keep the Korean and English slug identical so the website can switch directly between language editions. English publication remains guarded: when the paired English MDX is missing, the target is not published.
