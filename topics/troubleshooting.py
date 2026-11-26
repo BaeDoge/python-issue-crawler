@@ -39,7 +39,7 @@ PANDAS_COW_DOC_URL = "https://pandas.pydata.org/docs/user_guide/copy_on_write.ht
 
 def _load_official_reference(chosen: dict) -> dict:
     """Fetch current pandas CoW docs for pandas slice/chained-assignment topics."""
-    haystack = " ".join(str(chosen.get(key, "")) for key in ("title", "seed", "meta")).casefold()
+    haystack = " ".join(str(chosen.get(key, "")) for key in ("title", "seed", "meta", "body_excerpt")).casefold()
     is_pandas_topic = (
         "pandas" in haystack
         or "settingwithcopy" in haystack
@@ -135,6 +135,16 @@ def _build_context(chosen: dict) -> dict:
             "독립된 부분 데이터가 목적이면 df = original_df.loc[mask].copy() 후 수정할 것. "
             "Copy-on-Write 도입/기본값 전환의 pandas 버전을 공식 문서와 일치시킬 것."
         )
+        if official_reference:
+            source_note += (
+                "공식 문서는 Copy-on-Write가 1.5.0에서 처음 도입되었고, 2.0/2.1에서 지원이 확대되었으며, "
+                "3.0에서 기본이자 유일한 모드가 되었다고 설명한다. 이 순서를 바꾸지 말 것."
+            )
+        else:
+            source_note += (
+                "현재 공식 문서를 가져오지 못했다. 따라서 Copy-on-Write의 최초 도입 버전이나 "
+                "현재 기본값 전환 버전을 단정하지 말고, 버전별 동작은 확인되지 않았다고 명시하거나 생략할 것."
+            )
         parts += ["", "[원문 기반 편집 메모 — 본문에 그대로 복사하지 말고 정확한 설명에 활용]", source_note]
 
     q_author, a_author = chosen.get("author"), detail.get("author")
@@ -200,6 +210,11 @@ def _build_context(chosen: dict) -> dict:
             f"공식 문서 URL: {official_reference['url']}",
             "공식 문서 발췌:",
             official_reference["text"][:9000],
+        ]
+    elif is_pandas_copy_warning:
+        review_parts += [
+            "현재 공식 문서 조회 상태: pandas 공식 Copy-on-Write 문서를 가져오지 못했다.",
+            "따라서 Copy-on-Write의 최초 도입 버전이나 현재 기본값 전환 버전에 대한 단정은 근거가 없다. 해당 주장은 생략하거나 확인되지 않았다고 표시한다.",
         ]
     review_context = "\n\n".join(review_parts)
     return {"context_text": "\n".join(parts), "source_url": link, "sources": sources,
