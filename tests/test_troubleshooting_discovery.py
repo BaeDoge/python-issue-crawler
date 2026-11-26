@@ -48,16 +48,21 @@ class TroubleshootingDiscoveryTests(unittest.TestCase):
     @patch.object(troubleshooting.net, "get_text")
     def test_pandas_topic_receives_current_official_cow_document(self, get_text):
         get_text.return_value = (
+            "<p>Copy-on-Write is now the default with pandas 3.0.</p>"
+            "<p>Copy-on-Write was first introduced in version 1.5.0. "
+            "Starting from version 2.0 most optimizations are implemented, "
+            "and all optimizations are supported starting from version 2.1.</p>"
             "<h2>Previous behavior</h2><p>Views and copies had different behavior.</p>"
-            "<h2>Migrating to Copy-on-Write</h2><p>Copy-on-Write is default in pandas 3.0.</p>"
-            "<h2>Chained Assignment</h2><p>Use loc for a single assignment.</p>"
+            "<h2>Migrating to Copy-on-Write</h2><p>Chained assignment will never work.</p>"
             "<h2>Read-only NumPy arrays</h2><p>Not part of this excerpt.</p>"
         )
         result = troubleshooting._load_official_reference({
             "title": "Correct way to set value on a slice in pandas"
         })
         self.assertEqual(result["platform"], "pandas 공식 문서")
-        self.assertIn("Copy-on-Write is default in pandas 3.0", result["text"])
+        self.assertIn("Copy-on-Write was first introduced in version 1.5.0", result["text"])
+        self.assertIn("Starting from version 2.0", result["text"])
+        self.assertIn("default with pandas 3.0", result["text"])
         self.assertNotIn("Not part of this excerpt", result["text"])
         get_text.assert_called_once_with(
             troubleshooting.PANDAS_COW_DOC_URL,
