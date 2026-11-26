@@ -155,8 +155,18 @@ def _sync_branch(repo_path: Path, branch: str) -> None:
         except (OSError, subprocess.SubprocessError) as abort_exc:
             abort_detail = f"자동 rebase 취소 중 추가 오류가 발생했습니다: {abort_exc}"
 
+        git_output = "\n".join(part for part in (exc.stdout, exc.stderr) if part)
+        is_conflict = (
+            "conflict" in git_output.casefold()
+            or "could not apply" in git_output.casefold()
+        )
+        failure_message = (
+            "자동 rebase에 충돌이 발생했습니다."
+            if is_conflict
+            else "자동 rebase에 실패했습니다."
+        )
         raise PublishError(
-            f"{branch}와 {remote_ref}의 자동 rebase에 실패했습니다. {abort_detail}\n"
+            f"{branch}와 {remote_ref}의 {failure_message} {abort_detail}\n"
             f"원인:\n{exc}\n"
             "확인 명령: git log --oneline --left-right --graph "
             f"HEAD...{remote_ref}",
