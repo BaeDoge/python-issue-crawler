@@ -7,7 +7,7 @@ from types import SimpleNamespace
 os.environ.setdefault("OMNIROUTE_API_KEY", "unit-test-only")
 
 from topics.translate import _translate_flexible_result
-from publish.git_publish import _publish_to_repo, _english_post_destination
+from publish.git_publish import PublishError, _publish_to_repo, _english_post_destination
 
 
 class FlexiblePaperTranslationTests(unittest.TestCase):
@@ -188,7 +188,7 @@ class BilingualPublishGuardTests(unittest.TestCase):
 
     def test_english_path_rejects_parent_traversal(self):
         with tempfile.TemporaryDirectory() as temp:
-            with self.assertRaises(ValueError):
+            with self.assertRaises(PublishError):
                 _english_post_destination(
                     Path(temp),
                     "content/en",
