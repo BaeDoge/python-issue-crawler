@@ -169,7 +169,9 @@ def render_note(
         safe_content, _ = normalize_mdx_text(normalize_code_fences(content))
         block = f"## {header}\n\n{safe_content}\n"
         for img in section_images.get(header, []):
-            block += f"\n![{img.get('alt', header)}]({img['url']})\n"
+            alt = _markdown_label(img.get("alt", header))
+            url = _markdown_url(img["url"])
+            block += f"\n![{alt}]({url})\n"
         body_parts.append(block)
 
     if sources:
@@ -241,7 +243,9 @@ def render_note_en(
         safe_content, _ = normalize_mdx_text(normalize_code_fences(content))
         block = f"## {header}\n\n{safe_content}\n"
         for img in section_images.get(header, []):
-            block += f"\n![{img['alt']}]({img['url']})\n"
+            alt = _markdown_label(img["alt"])
+            url = _markdown_url(img["url"])
+            block += f"\n![{alt}]({url})\n"
         body_parts.append(block)
 
     sources = _dedupe_sources(ko_result.get("sources", []))

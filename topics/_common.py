@@ -158,10 +158,13 @@ def _writer_prompt(spec: TopicSpec, chosen_title: str, context_text: str) -> str
         "**반드시 지킬 것:**\n"
         "- 참고 자료에 없는 사실을 지어내지 말 것. 참고 자료의 문장을 그대로 복사하지 말고 자기 말로 정리할 것\n"
         "- 코드블록은 언어 표시를 포함해 시작하고 닫는 구분자를 각각 새 줄에 쓸 것\n"
-        "- title은 반드시 '" + spec.category_prefix + " 핵심 키워드' 형식으로, 15~30자 내외, "
-        "과장되거나 극적인 표현 없이 담백하게 작성할 것\n"
+        "- title은 반드시 '" + spec.category_prefix + " 실제 문제명/프로젝트명/논문 주제' 형식으로, 15~30자 내외로 작성할 것. "
+        "'핵심 키워드' 같은 임시 문구를 제목에 그대로 쓰지 말고, 실제 소재를 구체적으로 드러낼 것\n"
         "- summary는 1문장으로, 광고 카피처럼 쓰지 말고 무엇을 다루는지만 명확하게 쓸 것\n"
         "- 파일명·함수명·키·명령어는 본문에서 인라인 코드로 감쌀 것\n"
+        "- 원문 URL·HTML 조각·제목에 포함된 '<'와 '>'를 평문이나 JSX 태그로 그대로 복사하지 말 것. "
+        "Markdown 링크의 URL은 안전한 URL 인코딩을 사용하고, 본문 속 태그처럼 보이는 문자열은 '&lt;'와 '&gt;'로 표시할 것. "
+        "단, 코드 블록·인라인 코드·실제 비교 연산자와 허용된 MDX 컴포넌트는 의미를 보존할 것\n"
         "- 일반론으로 문단을 늘이지 말고, 한 문단에는 핵심 주장 하나를 설명할 것\n"
     )
     if spec.flexible_sections:
@@ -190,7 +193,7 @@ def _writer_prompt(spec: TopicSpec, chosen_title: str, context_text: str) -> str
 
     if spec.flexible_sections:
         output_structure = (
-            "제목: [논문리뷰] 논문의 핵심 주제\n"
+            "제목: [논문리뷰] 실제 논문 제목 또는 구체적인 연구 주제 (예시 문구를 그대로 출력하지 말 것)\n"
             "요약: 논문이 다루는 문제와 핵심 접근을 한 문장으로 설명\n\n"
             "이후에는 네가 선택한 3~6개의 서로 다른 섹션 제목으로 본문을 구성한다. "
             "제목은 고정 목차를 복사하지 말고 이 논문에 맞춰 작성한다.\n"
@@ -205,7 +208,7 @@ def _writer_prompt(spec: TopicSpec, chosen_title: str, context_text: str) -> str
     else:
         output_structure = (
             "**출력 형식 (이 형식만 사용하고 앞뒤에 다른 설명을 붙이지 말 것):**\n\n"
-            + f"제목: {spec.category_prefix} 핵심 키워드\n"
+            + f"제목: {spec.category_prefix} 실제 문제명 또는 주제 (괄호와 예시 문구는 출력하지 말 것)\n"
             + "요약: 한 문장\n\n"
             + "\n\n".join(
                 f"## {section}\n(본문 — 코드는 언어 지정 코드 블록으로)"
