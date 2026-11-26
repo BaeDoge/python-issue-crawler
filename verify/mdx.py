@@ -1,17 +1,17 @@
 """Small MDX text-safety helpers shared by rendering and publishing."""
 import re
 
-_FENCE_START_RE = re.compile(r"^\\s*(`{3,}|~{3,})")
-_INLINE_CODE_RE = re.compile(r"(?<!`)(`+)(?!`)([^`\\n]*?)\\1(?!`)")
-_MDX_TAG_RE = re.compile(r"</?(?:Callout|Badge|StatGrid|Stat|Steps|Step|Compare|ComparePanel|Terminal|FileTree|Figure|Timeline|TimelineItem|Checklist|Kbd)(?:\\s+[^<>]*?)?\\s*/?>")
-_HTML_TAG_RE = re.compile(r"</?\\s*[A-Za-z][A-Za-z0-9._:-]*(?:\\s+[^<>]*?)?\\s*/?>|<>|</>")
-_ANCHOR_RE = re.compile(r"<a\\b([^>]*)>(.*?)</a\\s*>", re.IGNORECASE)
-_HREF_RE = re.compile(r"""href\\s*=\\s*"([^"]*)"""", re.IGNORECASE)
-_IMG_RE = re.compile(r"<img\\b([^>]*)/?>", re.IGNORECASE)
-_SRC_RE = re.compile(r"""src\\s*=\\s*"([^"]*)"""", re.IGNORECASE)
-_ALT_RE = re.compile(r"""alt\\s*=\\s*"([^"]*)"""", re.IGNORECASE)
-_COMPARISON_RE = re.compile(r"(?<=\\w)(\\s*)<(?=\\s|=|\\d)")
-_ADJACENT_COMPARISON_RE = re.compile(r"(?<=\\w)<(?=[A-Za-z0-9])")
+_FENCE_START_RE = re.compile(r"^\s*(`{3,}|~{3,})")
+_INLINE_CODE_RE = re.compile(r"(?<!`)(`+)(?!`)([^`\n]*?)\1(?!`)")
+_MDX_TAG_RE = re.compile(r"</?(?:Callout|Badge|StatGrid|Stat|Steps|Step|Compare|ComparePanel|Terminal|FileTree|Figure|Timeline|TimelineItem|Checklist|Kbd)(?:\s+[^<>]*?)?\s*/?>")
+_HTML_TAG_RE = re.compile(r"</?\s*[A-Za-z][A-Za-z0-9._:-]*(?:\s+[^<>]*?)?\s*/?>|<>|</>")
+_ANCHOR_RE = re.compile(r"<a\b([^>]*)>(.*?)</a\s*>", re.IGNORECASE)
+_HREF_RE = re.compile(r'href\\s*=\\s*\"([^\"]*)\"', re.IGNORECASE)
+_IMG_RE = re.compile(r"<img\b([^>]*)/?>", re.IGNORECASE)
+_SRC_RE = re.compile(r'src\\s*=\\s*\"([^\"]*)\"', re.IGNORECASE)
+_ALT_RE = re.compile(r'alt\\s*=\\s*\"([^\"]*)\"', re.IGNORECASE)
+_COMPARISON_RE = re.compile(r"(?<=\w)(\s*)<(?=\s|=|\d)")
+_ADJACENT_COMPARISON_RE = re.compile(r"(?<=\w)<(?=[A-Za-z0-9])")
 
 def _safe_markdown_link(url: str, label: str) -> str:
     """Convert only web links to Markdown; never preserve executable URL schemes."""
@@ -28,7 +28,7 @@ def _sanitize_raw_html(value: str) -> str:
     protected: list[str] = []
     def hold(match: re.Match) -> str:
         protected.append(match.group(0))
-        return f"\\x00MDXSAFE{len(protected) - 1}\\x00"
+        return f"\x00MDXSAFE{len(protected) - 1}\x00"
     value = _INLINE_CODE_RE.sub(hold, value)
     value = _MDX_TAG_RE.sub(hold, value)
     def convert_anchor(match: re.Match) -> str:
@@ -48,11 +48,11 @@ def _sanitize_raw_html(value: str) -> str:
             return f"![{description}]({source})"
         return alt.group(1) if alt else ""
     value = _IMG_RE.sub(convert_image, value)
-    value = re.sub(r"<br\\s*/?>", "\\n", value, flags=re.IGNORECASE)
-    value = re.sub(r"</?(?:p|div|section|article|ul|ol|li|h[1-6]|blockquote|pre|table|thead|tbody|tr)\\b[^>]*>", "\\n", value, flags=re.IGNORECASE)
+    value = re.sub(r"<br\s*/?>", "\n", value, flags=re.IGNORECASE)
+    value = re.sub(r"</?(?:p|div|section|article|ul|ol|li|h[1-6]|blockquote|pre|table|thead|tbody|tr)\b[^>]*>", "\n", value, flags=re.IGNORECASE)
     value = _HTML_TAG_RE.sub("", value)
     for token_index, original in enumerate(protected):
-        value = value.replace(f"\\x00MDXSAFE{token_index}\\x00", original)
+        value = value.replace(f"\x00MDXSAFE{token_index}\x00", original)
     return value
 
 def normalize_mdx_text(text: str) -> tuple[str, int]:
