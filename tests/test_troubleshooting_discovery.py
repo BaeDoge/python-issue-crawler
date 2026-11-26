@@ -74,5 +74,43 @@ class TroubleshootingDiscoveryTests(unittest.TestCase):
         get_text.assert_not_called()
 
 
+
+    @patch.object(troubleshooting.net, "get_text")
+    @patch.object(troubleshooting, "capture_images", return_value=[])
+    @patch.object(troubleshooting, "blog_references", return_value=[])
+    @patch.object(troubleshooting, "_load_official_reference", return_value={
+        "platform": "pandas 공식 문서",
+        "title": "Copy-on-Write (CoW)",
+        "url": troubleshooting.PANDAS_COW_DOC_URL,
+        "text": "Copy-on-Write was first introduced in version 1.5.0. The default is pandas 3.0.",
+    })
+    @patch.object(troubleshooting, "stackoverflow_answer_detail", return_value={
+        "text": "The original DataFrame was likely sliced earlier. Use .copy() when creating the subset.",
+        "raw_body": "",
+        "author": "answerer",
+    })
+    def test_build_context_gives_question_answer_and_docs_to_verifier(
+        self, _answer_detail, _official, _blogs, _images, _get_text
+    ):
+        chosen = {
+            "title": "Python: Pandas Dataframe how to multiply entire column with a scalar",
+            "link": "https://stackoverflow.com/questions/33768122/python-pandas-dataframe-how-to-multiply-entire-column-with-a-scalar",
+            "meta": "StackOverflow · 2015 · pandas 0.16.2",
+            "body_excerpt": (
+                "df['quantity'] *= -1 gives SettingWithCopyWarning. "
+                "The question author reports pandas 0.16.2."
+            ),
+            "author": "questioner",
+            "raw_body": "",
+        }
+        result = troubleshooting._build_context(chosen)
+        self.assertIn("df['quantity'] *= -1", result["context_text"])
+        self.assertIn("df[['quantity']] 자체가 원문 경고를 재현한다고 지어내지 말 것", result["context_text"])
+        self.assertIn("원문 질문/이슈 본문", result["review_context"])
+        self.assertIn("채택 답변/해결 코멘트", result["review_context"])
+        self.assertIn("Copy-on-Write was first introduced", result["review_context"])
+        self.assertTrue(any(src["platform"] == "pandas 공식 문서" for src in result["sources"]))
+
+
 if __name__ == "__main__":
     unittest.main()
