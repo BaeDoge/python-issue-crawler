@@ -168,7 +168,7 @@ _ERROR_ALIASES = {
     "settingwithcopywarning": (
         "settingwithcopywarning", "chained assignment", "chained_assignment",
         "copy-on-write", "copy on write", "view versus copy", "views versus copies",
-        "슬라이스", "복사본", "뷰와 복사본", "체이닝 할당", "연쇄 할당",
+        "슬라이스 복사본", "슬라이스 할당", "뷰와 복사본", "체이닝 할당", "연쇄 할당",
     ),
 }
 
