@@ -7,7 +7,7 @@ from types import SimpleNamespace
 os.environ.setdefault("OMNIROUTE_API_KEY", "unit-test-only")
 
 from topics.translate import _translate_flexible_result
-from publish.git_publish import _publish_to_repo
+from publish.git_publish import _publish_to_repo, _english_post_destination
 
 
 class FlexiblePaperTranslationTests(unittest.TestCase):
@@ -157,6 +157,45 @@ class BilingualPublishGuardTests(unittest.TestCase):
             self.assertFalse(result["ok"])
             self.assertEqual(result["stage"], "영문 MDX 사전 확인")
             self.assertIn("한국어·영어 파일이 모두 준비된 경우", result["message"])
+
+
+    def test_english_path_mirrors_category_when_category_subdirs_enabled(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            result = _english_post_destination(
+                root,
+                "content/en",
+                "troubleshooting",
+                True,
+                "example-error.mdx",
+            )
+            self.assertEqual(
+                result,
+                root / "content" / "en" / "troubleshooting" / "example-error.mdx",
+            )
+
+    def test_english_path_stays_flat_when_category_subdirs_disabled(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            result = _english_post_destination(
+                root,
+                "src/app/blog/posts/en",
+                "paper",
+                False,
+                "example-paper.mdx",
+            )
+            self.assertEqual(result, root / "src" / "app" / "blog" / "posts" / "en" / "example-paper.mdx")
+
+    def test_english_path_rejects_parent_traversal(self):
+        with tempfile.TemporaryDirectory() as temp:
+            with self.assertRaises(ValueError):
+                _english_post_destination(
+                    Path(temp),
+                    "content/en",
+                    "../outside",
+                    True,
+                    "example.mdx",
+                )
 
 
 if __name__ == "__main__":
