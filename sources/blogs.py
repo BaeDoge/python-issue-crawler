@@ -18,6 +18,7 @@
 
 import os
 import re
+import unicodedata
 import urllib.parse
 
 from bs4 import BeautifulSoup
@@ -153,15 +154,97 @@ def fetch_blog_article(url: str, max_chars: int = 3500) -> dict | None:
     return article
 
 
-def blog_references(query: str, max_articles: int = 2) -> list:
-    """검색 -> 본문 가져오기. 가져오기에 성공한 글만 최대 max_articles개 반환."""
+
+_TOKEN_RE = re.compile(r"[a-z][a-z0-9_]{2,}|[가-힣]{2,}", re.I)
+_ERROR_MARKER_RE = re.compile(r"\b[A-Za-z][A-Za-z0-9_]*(?:Error|Warning|Exception)\b", re.I)
+_TOPIC_STOP_WORDS = {
+    "python", "파이썬", "pandas", "판다스", "dataframe", "데이터프레임",
+    "해결", "방법", "오류", "에러", "문제", "사용", "관련", "대한",
+    "how", "what", "when", "where", "with", "from", "into", "your",
+    "this", "that", "the", "and", "for", "are", "was", "use", "using",
+    "data", "frame", "column", "entire", "scalar",
+}
+_ERROR_ALIASES = {
+    "settingwithcopywarning": (
+        "settingwithcopywarning", "chained assignment", "chained_assignment",
+        "copy-on-write", "copy on write", "view versus copy", "views versus copies",
+        "슬라이스 복사본", "슬라이스 할당", "뷰와 복사본", "체이닝 할당", "연쇄 할당",
+    ),
+}
+
+
+def _normalized_match_text(value: str) -> str:
+    value = unicodedata.normalize("NFKC", value or "").casefold()
+    return re.sub(r"[^a-z0-9가-힣]+", "", value)
+
+
+def _tokens(value: str) -> set[str]:
+    normalized = unicodedata.normalize("NFKC", value or "").casefold()
+    return {token for token in _TOKEN_RE.findall(normalized) if token not in _TOPIC_STOP_WORDS}
+
+
+def _issue_aliases(source_context: str) -> list[tuple[str, ...]]:
+    aliases: list[tuple[str, ...]] = []
+    seen: set[str] = set()
+    for marker in _ERROR_MARKER_RE.findall(source_context or ""):
+        key = marker.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        aliases.append(_ERROR_ALIASES.get(key, (marker,)))
+    return aliases
+
+
+def is_relevant_blog_article(
+    *, query: str, relevance_context: str = "", title: str = "", text: str = ""
+) -> bool:
+    """Reject pages that share only broad terms such as Python or DataFrame."""
+    source_context = relevance_context.strip() or query
+    candidate_text = f"{title}\n{text}"
+    candidate_normalized = _normalized_match_text(candidate_text)
+    aliases = _issue_aliases(source_context)
+
+    if aliases:
+        for alternatives in aliases:
+            if not any(_normalized_match_text(item) in candidate_normalized for item in alternatives):
+                return False
+        return True
+
+    source_tokens = _tokens(source_context)
+    candidate_tokens = _tokens(candidate_text)
+    overlap = source_tokens & candidate_tokens
+    if len(overlap) < 2:
+        return False
+    return len(overlap) / max(1, min(len(source_tokens), 8)) >= 0.25
+
+
+def blog_references(
+    query: str,
+    max_articles: int = 2,
+    *,
+    relevance_context: str = "",
+) -> list:
+    """Search, fetch and keep only pages relevant to the original issue and accepted answer."""
     articles = []
-    for hit in search_blog_posts(query, limit=max_articles * 3):
+    hits = search_blog_posts(query, limit=max_articles * 4)
+    rejected = 0
+    for hit in hits:
         art = fetch_blog_article(hit["url"])
-        if art:
-            if not art["title"]:
-                art["title"] = hit["title"]
-            articles.append(art)
+        if not art:
+            continue
+        if not art["title"]:
+            art["title"] = hit["title"]
+        if not is_relevant_blog_article(
+            query=query,
+            relevance_context=relevance_context,
+            title=art["title"],
+            text=art["text"],
+        ):
+            rejected += 1
+            print(f"[한국어 블로그 제외] 주제/오류 불일치: {art['title'][:100]} ({art['url']})")
+            continue
+        articles.append(art)
         if len(articles) >= max_articles:
             break
+    print(f"[한국어 블로그] 관련 자료 {len(articles)}건 채택, 관련성 부족 {rejected}건 제외")
     return articles

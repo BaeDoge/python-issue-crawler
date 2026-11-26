@@ -48,16 +48,21 @@ class TroubleshootingDiscoveryTests(unittest.TestCase):
     @patch.object(troubleshooting.net, "get_text")
     def test_pandas_topic_receives_current_official_cow_document(self, get_text):
         get_text.return_value = (
+            "<p>Copy-on-Write is now the default with pandas 3.0.</p>"
+            "<p>Copy-on-Write was first introduced in version 1.5.0. "
+            "Starting from version 2.0 most optimizations are implemented, "
+            "and all optimizations are supported starting from version 2.1.</p>"
             "<h2>Previous behavior</h2><p>Views and copies had different behavior.</p>"
-            "<h2>Migrating to Copy-on-Write</h2><p>Copy-on-Write is default in pandas 3.0.</p>"
-            "<h2>Chained Assignment</h2><p>Use loc for a single assignment.</p>"
+            "<h2>Migrating to Copy-on-Write</h2><p>Chained assignment will never work.</p>"
             "<h2>Read-only NumPy arrays</h2><p>Not part of this excerpt.</p>"
         )
         result = troubleshooting._load_official_reference({
             "title": "Correct way to set value on a slice in pandas"
         })
         self.assertEqual(result["platform"], "pandas 공식 문서")
-        self.assertIn("Copy-on-Write is default in pandas 3.0", result["text"])
+        self.assertIn("Copy-on-Write was first introduced in version 1.5.0", result["text"])
+        self.assertIn("Starting from version 2.0", result["text"])
+        self.assertIn("default with pandas 3.0", result["text"])
         self.assertNotIn("Not part of this excerpt", result["text"])
         get_text.assert_called_once_with(
             troubleshooting.PANDAS_COW_DOC_URL,
@@ -72,6 +77,44 @@ class TroubleshootingDiscoveryTests(unittest.TestCase):
         })
         self.assertEqual(result, {})
         get_text.assert_not_called()
+
+
+
+    @patch.object(troubleshooting.net, "get_text")
+    @patch.object(troubleshooting, "capture_images", return_value=[])
+    @patch.object(troubleshooting, "blog_references", return_value=[])
+    @patch.object(troubleshooting, "_load_official_reference", return_value={
+        "platform": "pandas 공식 문서",
+        "title": "Copy-on-Write (CoW)",
+        "url": troubleshooting.PANDAS_COW_DOC_URL,
+        "text": "Copy-on-Write was first introduced in version 1.5.0. The default is pandas 3.0.",
+    })
+    @patch.object(troubleshooting, "stackoverflow_answer_detail", return_value={
+        "text": "The original DataFrame was likely sliced earlier. Use .copy() when creating the subset.",
+        "raw_body": "",
+        "author": "answerer",
+    })
+    def test_build_context_gives_question_answer_and_docs_to_verifier(
+        self, _answer_detail, _official, _blogs, _images, _get_text
+    ):
+        chosen = {
+            "title": "Python: Pandas Dataframe how to multiply entire column with a scalar",
+            "link": "https://stackoverflow.com/questions/33768122/python-pandas-dataframe-how-to-multiply-entire-column-with-a-scalar",
+            "meta": "StackOverflow · 2015 · pandas 0.16.2",
+            "body_excerpt": (
+                "df['quantity'] *= -1 gives SettingWithCopyWarning. "
+                "The question author reports pandas 0.16.2."
+            ),
+            "author": "questioner",
+            "raw_body": "",
+        }
+        result = troubleshooting._build_context(chosen)
+        self.assertIn("df['quantity'] *= -1", result["context_text"])
+        self.assertIn("df[['quantity']] 자체가 원문 경고를 재현한다고 지어내지 말 것", result["context_text"])
+        self.assertIn("원문 질문/이슈 본문", result["review_context"])
+        self.assertIn("채택 답변/해결 코멘트", result["review_context"])
+        self.assertIn("Copy-on-Write was first introduced", result["review_context"])
+        self.assertTrue(any(src["platform"] == "pandas 공식 문서" for src in result["sources"]))
 
 
 if __name__ == "__main__":
