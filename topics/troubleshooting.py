@@ -54,14 +54,24 @@ def _load_official_reference(chosen: dict) -> dict:
         print(f"[pandas 공식 문서 수집 실패, 원문 자료로 계속 진행] {type(exc).__name__}: {str(exc)[:180]}")
         return {}
     if not html_text:
+        print(f"[pandas 공식 문서 누락] {PANDAS_COW_DOC_URL} 응답이 비어 있습니다. 이번 글은 현재 버전 근거 없이 작성됩니다.")
         return {}
 
     clean = _strip_html(html_text)
-    start = clean.find("Previous behavior")
+    # The version history appears BEFORE the "Previous behavior" heading.
+    # Start at the introductory CoW note so 1.5.0 / 2.0 / 2.1 / 3.0 are all retained.
+    start = clean.find("Copy-on-Write is now the default")
+    if start < 0:
+        start = clean.find("Copy-on-Write was first introduced")
+    if start < 0:
+        start = clean.find("Previous behavior")
     end = clean.find("Read-only NumPy arrays", start if start >= 0 else 0)
-    excerpt = clean[start:end] if start >= 0 and end > start else clean[:9000]
-    excerpt = excerpt.strip()[:9000]
+    if start < 0 or end <= start:
+        print("[pandas 공식 문서 누락] Copy-on-Write 버전 안내 구간을 추출하지 못했습니다.")
+        return {}
+    excerpt = clean[start:end].strip()[:9000]
     if len(excerpt) < 300:
+        print("[pandas 공식 문서 누락] 추출된 근거가 너무 짧아 검수 자료로 사용하지 않습니다.")
         return {}
 
     return {
@@ -104,6 +114,28 @@ def _build_context(chosen: dict) -> dict:
             official_reference["text"],
         ]
 
+    source_combined = "\n".join([
+        str(chosen.get("title", "")),
+        str(chosen.get("body_excerpt", "")),
+        answer_text,
+    ])
+    is_pandas_copy_warning = (
+        "pandas" in source_combined.casefold()
+        and "settingwithcopywarning" in source_combined.casefold()
+    )
+    if is_pandas_copy_warning:
+        source_note = (
+            "원문 해석상 주의: StackOverflow 질문의 실제 연산은 df['quantity'] *= -1 이며 "
+            "질문자는 pandas 0.16.2를 사용했다고 밝혔다. 질문에는 df 생성 과정이 나오지 않는다. "
+            "댓글과 답변은 df가 상위 DataFrame에서 필터링된 슬라이스였을 가능성을 지적하고, "
+            "독립된 부분 데이터가 목적이면 슬라이스를 만드는 시점에 .copy()를 적용하라고 설명한다. "
+            "df[['quantity']] 자체가 원문 경고를 재현한다고 지어내지 말 것. "
+            "상위 DataFrame을 수정하려면 original_df.loc[mask, 'quantity']에 직접 할당하고, "
+            "독립된 부분 데이터가 목적이면 df = original_df.loc[mask].copy() 후 수정할 것. "
+            "Copy-on-Write 도입/기본값 전환의 pandas 버전을 공식 문서와 일치시킬 것."
+        )
+        parts += ["", "[원문 기반 편집 메모 — 본문에 그대로 복사하지 말고 정확한 설명에 활용]", source_note]
+
     q_author, a_author = chosen.get("author"), detail.get("author")
     author = ", ".join(x for x in (f"{q_author}(질문)" if q_author else None,
                                    f"{a_author}(답변)" if a_author else None) if x) or None
@@ -122,10 +154,19 @@ def _build_context(chosen: dict) -> dict:
          "platform": platform, "author": a_author},
     ]
 
-    # 한국어 블로그 보조 자료 (실패해도 진행)
+    # 한국어 블로그는 원문 질문/채택 답변과 오류 앵커가 맞는 자료만 보조로 사용한다.
     third_party = False
+    blog_relevance_context = "\n".join([
+        str(chosen.get("title", "")),
+        str(chosen.get("body_excerpt", "")),
+        answer_text,
+    ])
     try:
-        articles = blog_references(f"파이썬 {chosen['title']} 해결", max_articles=BLOG_MAX_ARTICLES)
+        articles = blog_references(
+            f"파이썬 {chosen['title']} 해결",
+            max_articles=BLOG_MAX_ARTICLES,
+            relevance_context=blog_relevance_context,
+        )
     except Exception as e:  # 네트워크/파싱 어떤 이유든 블로그 때문에 전체가 멈추면 안 됨
         print(f"[블로그 참고 자료 수집 실패, 건너뜀] {e}")
         articles = []
@@ -141,13 +182,25 @@ def _build_context(chosen: dict) -> dict:
     slug_hint = "".join(ch for ch in chosen["title"] if ch.isalnum())[:20].lower() or "note"
     images = capture_images(items=image_items, out_dir=OUTPUT_DIR / KEY / "images", slug_hint=slug_hint)
 
-    review_context = ""
+    # Give the Verifier the same primary evidence as the Writer.
+    review_parts = [
+        f"1차 출처 플랫폼: {platform}",
+        f"1차 출처 제목: {chosen['title']}",
+        f"1차 출처 URL: {link}",
+    ]
+    if chosen.get("meta"):
+        review_parts.append(f"원문 메타데이터: {chosen['meta']}")
+    if chosen.get("body_excerpt"):
+        review_parts += ["원문 질문/이슈 본문:", chosen["body_excerpt"][:3000]]
+    review_parts += ["채택 답변/해결 코멘트:", answer_text[:3500]]
     if official_reference:
-        review_context = (
-            f"공식 문서: {official_reference['title']}\n"
-            f"URL: {official_reference['url']}\n"
-            f"{official_reference['text']}"
-        )
+        review_parts += [
+            f"공식 문서: {official_reference['title']}",
+            f"공식 문서 URL: {official_reference['url']}",
+            "공식 문서 발췌:",
+            official_reference["text"][:9000],
+        ]
+    review_context = "\n\n".join(review_parts)
     return {"context_text": "\n".join(parts), "source_url": link, "sources": sources,
             "images": images, "third_party": third_party, "review_context": review_context}
 
