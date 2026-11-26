@@ -64,7 +64,8 @@ def _load_official_reference(chosen: dict) -> dict:
     if start < 0:
         start = clean.find("Copy-on-Write was first introduced")
     if start < 0:
-        start = clean.find("Previous behavior")
+        print("[pandas 공식 문서 누락] 버전 안내 문구를 찾지 못했습니다. 이전 동작 설명만으로 현재 버전을 추정하지 않습니다.")
+        return {}
     end = clean.find("Read-only NumPy arrays", start if start >= 0 else 0)
     if start < 0 or end <= start:
         print("[pandas 공식 문서 누락] Copy-on-Write 버전 안내 구간을 추출하지 못했습니다.")
