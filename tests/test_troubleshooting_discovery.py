@@ -51,9 +51,13 @@ class TroubleshootingDiscoveryTests(unittest.TestCase):
             "<p>Copy-on-Write is now the default with pandas 3.0.</p>"
             "<p>Copy-on-Write was first introduced in version 1.5.0. "
             "Starting from version 2.0 most optimizations are implemented, "
-            "and all optimizations are supported starting from version 2.1.</p>"
+            "and all optimizations are supported starting from version 2.1. "
+            "The behavior ensures that derived objects behave as independent copies "
+            "when users modify data through an indexer. This avoids ambiguous chained "
+            "assignment and makes mutation semantics more predictable.</p>"
             "<h2>Previous behavior</h2><p>Views and copies had different behavior.</p>"
-            "<h2>Migrating to Copy-on-Write</h2><p>Chained assignment will never work.</p>"
+            "<h2>Migrating to Copy-on-Write</h2><p>Chained assignment will never work. "
+            "Use a single .loc assignment on the original DataFrame instead.</p>"
             "<h2>Read-only NumPy arrays</h2><p>Not part of this excerpt.</p>"
         )
         result = troubleshooting._load_official_reference({
