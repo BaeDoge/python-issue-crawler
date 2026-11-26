@@ -100,16 +100,7 @@ def _markdown_label(value: str) -> str:
 
 def _markdown_url(value: str) -> str:
     """Encode angle brackets and spaces in a Markdown URL destination."""
-    return quote(str(value), safe=":/?#[]@!def _source_line(src: dict) -> str:
-    platform = src.get("platform") or "원문"
-    label = src.get("title") or src["url"]
-    line = f"- {platform}: [{label}]({src['url']})"
-    if src.get("author"):
-        line += f" — 작성자: {src['author']}"
-    if platform == "StackOverflow":
-        line += " (CC BY-SA)"
-    return line
-'()*+,;=%")
+    return quote(str(value), safe=":/?#[]@!&()*+,;=%")
 
 
 def _source_line(src: dict) -> str:
@@ -118,11 +109,10 @@ def _source_line(src: dict) -> str:
     url = _markdown_url(src["url"])
     line = f"- {platform}: [{label}]({url})"
     if src.get("author"):
-        line += f" — 작성자: {_markdown_label(src['author'])}"
+        line += f" — 작성자: {_markdown_label(src[\"author\"])}"
     if src.get("platform") == "StackOverflow":
         line += " (CC BY-SA)"
     return line
-
 
 def render_note(
     *, content_type: str, title: str, summary: str, tag: str,
