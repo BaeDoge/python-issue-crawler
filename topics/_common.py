@@ -531,7 +531,7 @@ def run_topic(spec: TopicSpec) -> dict:
         max_rounds=spec.max_rounds,
         log_prefix=f"[{spec.key}] ",
         stop_on_repeated_issues=bool(spec.long_form_guidance) or spec.key == "troubleshooting",
-        review_context=(ctx.get("review_context", "") if spec.long_form_guidance else ""),
+        review_context=ctx.get("review_context", ""),
         revision_guidance=spec.revision_guidance,
     )
 
