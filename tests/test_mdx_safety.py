@@ -45,6 +45,26 @@ class MdxTextSafetyTests(unittest.TestCase):
         self.assertEqual(actual, source)
         self.assertEqual(count, 0)
 
+    def test_preserves_supported_mdx_components_and_safe_html(self):
+        source = (
+            '<Callout type="info" title="참고">설명</Callout>\n'
+            '<Compare><ComparePanel title="A">내용</ComparePanel></Compare>\n'
+            "<p>일반 문단</p><br />\n"
+        )
+        actual, count = normalize_mdx_text(source)
+        self.assertEqual(actual, source)
+        self.assertEqual(count, 0)
+
+    def test_escapes_unsupported_script_and_custom_tags(self):
+        source = (
+            "원본에 <script>const x = 1;</script>라는 문자열이 있습니다.\n"
+            '사용자 XML <my-widget data-id="1">값</my-widget>도 설명합니다.'
+        )
+        actual, count = normalize_mdx_text(source)
+        self.assertIn("&lt;script&gt;const x = 1;&lt;/script&gt;", actual)
+        self.assertIn('&lt;my-widget data-id="1"&gt;값&lt;/my-widget&gt;', actual)
+        self.assertEqual(count, 4)
+
     def test_is_idempotent(self):
         once, _ = normalize_mdx_text("조건은 n <= 10입니다.")
         twice, count = normalize_mdx_text(once)
