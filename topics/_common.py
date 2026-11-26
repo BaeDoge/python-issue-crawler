@@ -162,6 +162,8 @@ def _writer_prompt(spec: TopicSpec, chosen_title: str, context_text: str) -> str
         "과장되거나 극적인 표현 없이 담백하게 작성할 것\n"
         "- summary는 1문장으로, 광고 카피처럼 쓰지 말고 무엇을 다루는지만 명확하게 쓸 것\n"
         "- 파일명·함수명·키·명령어는 본문에서 인라인 코드로 감쌀 것\n"
+        "- 원문 HTML 태그(<script>, <style>, <iframe>, <a> 등)를 본문에 그대로 복사하지 말 것. 외부 링크는 Markdown 링크 [설명](https://...)로 바꾸고 HTML 태그 자체는 출력하지 말 것\\n"
+        "- <, > 비교 기호는 일반 문장에 그대로 두지 말고 자연어로 바꾸거나 이스케이프할 것. 코드 블록과 인라인 코드는 원래 기호를 보존할 것\\n"
         "- 일반론으로 문단을 늘이지 말고, 한 문단에는 핵심 주장 하나를 설명할 것\n"
     )
     if spec.flexible_sections:
