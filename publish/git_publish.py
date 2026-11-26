@@ -188,6 +188,27 @@ def _safe_relative(value: str | Path) -> Path:
     return path
 
 
+
+def _english_post_destination(
+    repo_path: Path,
+    en_posts_dir: str | Path,
+    category: str,
+    category_subdirs: bool,
+    filename: str,
+) -> Path:
+    """Resolve the English MDX target, mirroring the Korean category layout when enabled."""
+    relative = _safe_relative(en_posts_dir)
+    if category_subdirs:
+        relative = relative / _safe_relative(category)
+    safe_filename = Path(filename).name
+    if safe_filename != filename:
+        raise PublishError(
+            f"안전하지 않은 영문 파일명입니다: {filename}",
+            stage="영문 게시글 경로 검증",
+        )
+    return repo_path / relative / safe_filename
+
+
 def _publish_to_repo(
     *,
     target: dict,
@@ -270,7 +291,13 @@ def _publish_to_repo(
 
         en_dest_path = None
         if en_posts_dir:
-            en_dest_path = repo_path / _safe_relative(en_posts_dir) / note_path.name
+            en_dest_path = _english_post_destination(
+                repo_path,
+                en_posts_dir,
+                category,
+                bool(target["category_subdirs"]),
+                note_path.name,
+            )
             en_dest_path.parent.mkdir(parents=True, exist_ok=True)
             en_content = en_note_path.read_text(encoding="utf-8")
             en_content, _ = normalize_mdx_text(en_content)
