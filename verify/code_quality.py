@@ -159,3 +159,32 @@ def validate_python_code_blocks(text: str) -> list[str]:
             hints = ", ".join(f"{name} ({_IMPORT_HINTS[name]})" for name in missing[:5])
             issues.append(f"Python 코드 블록 {index}: 필요한 import가 누락되었을 수 있습니다: {hints}. 각 코드 블록에 필요한 import를 포함할 것.")
     return issues
+
+
+_NON_CODE_FENCE_LANGUAGES = {
+    "text", "txt", "plain", "plaintext", "console", "output",
+    "flow", "mermaid", "json", "yaml", "yml",
+}
+
+
+def validate_code_languages(
+    text: str,
+    *,
+    allowed_languages: tuple[str, ...] = ("python", "py", "python3"),
+    allowed_non_code_languages: set[str] | None = None,
+) -> list[str]:
+    """Reject unexpected programming-language fences in language-specific sections."""
+    allowed = {language.casefold() for language in allowed_languages}
+    non_code = allowed_non_code_languages or _NON_CODE_FENCE_LANGUAGES
+    issues: list[str] = []
+    for index, block in enumerate(iter_fenced_code_blocks(text or ""), 1):
+        if not block.complete:
+            continue
+        language = block.language
+        if not language or language in allowed or language in non_code:
+            continue
+        issues.append(
+            f"코드 블록 {index}: {language} 언어 펜스가 있습니다. "
+            f"이 섹션은 {', '.join(sorted(allowed))} 코드로 작성할 것."
+        )
+    return issues
