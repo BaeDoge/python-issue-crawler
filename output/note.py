@@ -21,6 +21,7 @@ from pathlib import Path
 from urllib.parse import quote, urlsplit
 
 from verify.mdx import normalize_mdx_text
+from verify.code_blocks import normalize_fenced_code_blocks
 
 PUBLIC_IMAGE_DIR = "public/blogs"   # 포트폴리오 레포 안에서 이미지가 저장되는 위치
 PUBLIC_IMAGE_URL_PREFIX = "/blogs"  # mdx에서 참조하는 URL 경로
@@ -34,21 +35,9 @@ _FENCE_RE = re.compile(r"```(.*?)```", re.DOTALL)
 
 
 def normalize_code_fences(text: str) -> str:
-    """``` ... ``` 블록을 항상 '빈 줄 + ```언어\\n코드\\n``` + 빈 줄' 형태로 다시 쓴다."""
-    def repl(m: re.Match) -> str:
-        inner = m.group(1)
-        lang = ""
-        lm = re.match(r"^([A-Za-z0-9_+#-]+)(?=[ \t]|\r?\n)", inner)
-        if lm and lm.group(1).lower() in _KNOWN_LANGS:
-            lang = lm.group(1)
-            inner = inner[lm.end():]
-        code = inner.strip("\r\n")
-        if "\n" not in code:
-            code = code.strip()
-        return f"\n\n```{lang}\n{code}\n```\n\n"
-
-    out = _FENCE_RE.sub(repl, text)
-    return re.sub(r"\n{3,}", "\n\n", out).strip()
+    """Normalize backtick/tilde Markdown fences before rendering MDX."""
+    out = normalize_fenced_code_blocks(text)
+    return re.sub(r"\\n{3,}", "\\n\\n", out).strip()
 
 
 def _yaml_str(s: str) -> str:
