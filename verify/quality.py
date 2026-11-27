@@ -12,6 +12,8 @@ import os
 import re
 from difflib import SequenceMatcher
 
+from verify.code_blocks import iter_fenced_code_blocks, mask_fenced_code_blocks
+
 from crewai import Task, Crew, Process
 
 _JSON_BLOCK_RE = re.compile(r"\{.*\}", re.DOTALL)
@@ -116,14 +118,14 @@ def extract_json(raw: str) -> dict | None:
     return None
 
 def has_noop_loop_code(text: str) -> bool:
-    """Detect empty for/while loops in Python code examples (common fake fixes)."""
-    fence = chr(96) * 3
-    pattern = re.compile(fence + r"(?:python|py)\s*\n(.*?)" + fence, re.IGNORECASE | re.DOTALL)
-    for match in pattern.finditer(text or ""):
+    """Detect empty Python loops in any supported fenced-code format."""
+    for block in iter_fenced_code_blocks(text or ""):
+        if block.language not in {"python", "py", "python3"}:
+            continue
         try:
-            tree = ast.parse(match.group(1))
+            tree = ast.parse(block.body)
         except SyntaxError:
-            # REPL transcripts or partial snippets are not safe to classify here.
+            # Full syntax validation is handled by validate_python_code_blocks.
             continue
         for node in ast.walk(tree):
             if isinstance(node, (ast.For, ast.AsyncFor, ast.While)):
@@ -134,13 +136,11 @@ def has_noop_loop_code(text: str) -> bool:
 
 def _mask_non_prose(text: str) -> str:
     """Remove code, links, and path-like tokens before checking natural-language prose."""
-    prose = text or ""
-    # An unfinished fence is still code; do not inspect the rest of the document as prose.
-    prose = re.sub(r"\x60{3}.*?(?:\x60{3}|\Z)", " ", prose, flags=re.DOTALL)
-    prose = re.sub(r"\x60[^\x60]*\x60", " ", prose)
-    prose = re.sub(r"https?://\S+", " ", prose)
+    prose = mask_fenced_code_blocks(text or "")
+    prose = re.sub(r"`[^`]*`", " ", prose)
+    prose = re.sub(r"https?://\\S+", " ", prose)
     # Markdown link destinations and bare repository paths are not natural-language text.
-    prose = re.sub(r"\]\(\s*[^)]+\)", "]", prose)
+    prose = re.sub(r"\\]\\(\\s*[^)]+\\)", "]", prose)
     prose = re.sub(r"(?<![A-Za-z0-9])(?:[A-Za-z0-9_.-]+/){1,}[A-Za-z0-9_.+@-]+", " ", prose)
     return prose
 
