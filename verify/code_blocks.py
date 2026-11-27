@@ -124,9 +124,10 @@ def normalize_fenced_code_blocks(text: str) -> str:
         if not block.complete:
             return block.raw
         body = block.body.rstrip("\r\n")
+        trailing_line_breaks = re.search(r"(?:\r\n|\n|\r)*$", block.raw).group(0)
         longest_backtick_run = max((len(run) for run in re.findall(r"\x60+", body)), default=0)
         fence = _BACKTICK * max(3, longest_backtick_run + 1)
-        return f"{fence}{block.info}\n{body}\n{fence}"
+        return f"{fence}{block.info}\n{body}\n{fence}{trailing_line_breaks}"
 
     return replace_fenced_code_blocks(text, normalize)
 
