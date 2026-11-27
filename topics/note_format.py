@@ -19,6 +19,8 @@ LLM이 안정적으로 따릅니다.
 
 import re
 
+from verify.code_blocks import iter_fenced_code_blocks
+
 _TITLE_RE = re.compile(r"^\s*(?:[-*]\s*)?(?:\*\*)?(?:제목|title)(?:\*\*)?\s*[:：]\s*(.+?)\s*$", re.IGNORECASE)
 _SUMMARY_RE = re.compile(r"^\s*(?:[-*]\s*)?(?:\*\*)?(?:요약|summary)(?:\*\*)?\s*[:：]\s*(.+?)\s*$", re.IGNORECASE)
 _HEADING_RE = re.compile(r"^\s{0,3}#{2,3}\s*(.+?)\s*#*\s*$")
@@ -38,9 +40,16 @@ def _clean_inline(s: str) -> str:
 
 
 def _unwrap_outer_fence(text: str) -> str:
-    lines = text.strip().splitlines()
-    if len(lines) >= 3 and re.match(r"^```(?:markdown|md|text)?\s*$", lines[0].strip()) and lines[-1].strip() == "```":
-        return "\n".join(lines[1:-1])
+    stripped = (text or "").strip()
+    blocks = list(iter_fenced_code_blocks(stripped))
+    if (
+        len(blocks) == 1
+        and blocks[0].complete
+        and blocks[0].start == 0
+        and blocks[0].end == len(stripped)
+        and blocks[0].language in {"markdown", "md", "text"}
+    ):
+        return blocks[0].body.strip("\\r\\n")
     return text
 
 
