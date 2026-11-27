@@ -52,6 +52,22 @@ _IMPORT_HINTS = {
     "ceil": "from math import ceil",
     "floor": "from math import floor",
     "factorial": "from math import factorial",
+    "isqrt": "from math import isqrt",
+    "log": "from math import log",
+    "log2": "from math import log2",
+    "log10": "from math import log10",
+    "comb": "from math import comb",
+    "perm": "from math import perm",
+    "inf": "from math import inf",
+    "collections": "import collections",
+    "functools": "import functools",
+    "itertools": "import itertools",
+    "math": "import math",
+    "operator": "import operator",
+    "random": "import random",
+    "re": "import re",
+    "statistics": "import statistics",
+    "string": "import string",
 }
 
 
@@ -93,9 +109,12 @@ def _is_placeholder_body(statements: list[ast.stmt]) -> bool:
         return True
     if isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Constant) and statement.value.value is Ellipsis:
         return True
-    if isinstance(statement, ast.Raise) and isinstance(statement.exc, ast.Call):
-        function = statement.exc.func
-        return isinstance(function, ast.Name) and function.id == "NotImplementedError"
+    if isinstance(statement, ast.Raise):
+        exception = statement.exc
+        if isinstance(exception, ast.Name):
+            return exception.id == "NotImplementedError"
+        if isinstance(exception, ast.Call):
+            return isinstance(exception.func, ast.Name) and exception.func.id == "NotImplementedError"
     return False
 
 
