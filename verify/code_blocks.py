@@ -125,7 +125,7 @@ def normalize_fenced_code_blocks(text: str) -> str:
             return block.raw
         body = block.body.rstrip("\r\n")
         fence = _BACKTICK * 3
-        return f"{fence}{block.info}\n{body}\n{fence}"
+        return f"\n\n{fence}{block.info}\n{body}\n{fence}\n\n"
 
     return replace_fenced_code_blocks(text, normalize)
 
