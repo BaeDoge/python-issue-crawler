@@ -31,7 +31,6 @@ _KNOWN_LANGS = {
     "text", "txt", "json", "yaml", "yml", "toml", "ini", "sql", "diff", "html", "css", "xml", "flow",
     "javascript", "js", "typescript", "ts", "tsx", "jsx", "java", "c", "cpp", "go", "rust", "dockerfile",
 }
-_FENCE_RE = re.compile(r"```(.*?)```", re.DOTALL)
 
 
 def normalize_code_fences(text: str) -> str:
