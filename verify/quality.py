@@ -138,9 +138,9 @@ def _mask_non_prose(text: str) -> str:
     """Remove code, links, and path-like tokens before checking natural-language prose."""
     prose = mask_fenced_code_blocks(text or "")
     prose = re.sub(r"`[^`]*`", " ", prose)
-    prose = re.sub(r"https?://\\S+", " ", prose)
+    prose = re.sub(r"https?://\S+", " ", prose)
     # Markdown link destinations and bare repository paths are not natural-language text.
-    prose = re.sub(r"\\]\\(\\s*[^)]+\\)", "]", prose)
+    prose = re.sub(r"\]\(\s*[^)]+\)", "]", prose)
     prose = re.sub(r"(?<![A-Za-z0-9])(?:[A-Za-z0-9_.-]+/){1,}[A-Za-z0-9_.+@-]+", " ", prose)
     return prose
 
