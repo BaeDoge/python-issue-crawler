@@ -75,7 +75,7 @@ def _defined_names(tree: ast.AST) -> set[str]:
     """Collect names declared anywhere in a snippet, including imports and parameters."""
     names: set[str] = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Param)):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
             names.add(node.id)
         elif isinstance(node, ast.arg):
             names.add(node.arg)
