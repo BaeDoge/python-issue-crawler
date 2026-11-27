@@ -11,8 +11,8 @@ import re
 from typing import Callable, Iterator
 
 
-_OPEN_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
-_CLOSE_RE = re.compile(r"^ {0,3}(`+|~+)[ \\t]*$")
+_OPEN_RE = re.compile(r"^ {0,3}(\`{3,}|~{3,})(.*)$")
+_CLOSE_RE = re.compile(r"^ {0,3}(\`+|~+)[ \t]*$")
 
 
 @dataclass(frozen=True)
@@ -44,7 +44,7 @@ def iter_fenced_code_blocks(text: str) -> Iterator[FencedCodeBlock]:
     index = 0
     while index < len(lines):
         line = lines[index]
-        opening = _OPEN_RE.match(line.rstrip("\\r\\n"))
+        opening = _OPEN_RE.match(line.rstrip("\r\n"))
         if not opening:
             index += 1
             continue
@@ -52,7 +52,7 @@ def iter_fenced_code_blocks(text: str) -> Iterator[FencedCodeBlock]:
         marker = opening.group(1)
         info = opening.group(2).strip()
         # CommonMark forbids backticks in the info string of a backtick fence.
-        if marker[0] == "`" and "`" in info:
+        if marker[0] == "\`" and "\`" in info:
             index += 1
             continue
 
@@ -60,7 +60,7 @@ def iter_fenced_code_blocks(text: str) -> Iterator[FencedCodeBlock]:
         body_start = start + len(line)
         closing_index = None
         for candidate_index in range(index + 1, len(lines)):
-            candidate = lines[candidate_index].rstrip("\\r\\n")
+            candidate = lines[candidate_index].rstrip("\r\n")
             closing = _CLOSE_RE.match(candidate)
             if (
                 closing
@@ -122,8 +122,8 @@ def normalize_fenced_code_blocks(text: str) -> str:
     def normalize(block: FencedCodeBlock) -> str:
         if not block.complete:
             return block.raw
-        body = block.body.rstrip("\\r\\n")
-        return f"```{block.info}\\n{body}\\n```"
+        body = block.body.rstrip("\r\n")
+        return f"\`\`\`{block.info}\n{body}\n\`\`\`"
 
     return replace_fenced_code_blocks(text, normalize)
 
@@ -131,6 +131,6 @@ def normalize_fenced_code_blocks(text: str) -> str:
 def mask_fenced_code_blocks(text: str) -> str:
     """Replace fenced block characters with spaces while preserving line breaks."""
     def mask(block: FencedCodeBlock) -> str:
-        return "".join("\\n" if char == "\\n" else "\\r" if char == "\\r" else " " for char in block.raw)
+        return "".join("\n" if char == "\n" else "\r" if char == "\r" else " " for char in block.raw)
 
     return replace_fenced_code_blocks(text, mask)
