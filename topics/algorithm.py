@@ -30,8 +30,18 @@ def _build_context(chosen: dict):
     tags = ", ".join(chosen.get("tags", []))
     if tags:
         context += f"\n\n관련 태그(참고용, 다른 풀이 방법 섹션에 활용 가능): {tags}"
-    return {"context_text": context, "source_url": chosen.get("link"),
-            "sources": [{"platform": "LeetCode", "title": chosen["title"], "url": chosen.get("link"), "author": None}]}
+    source_evidence = (
+        "[LeetCode 원문 문제 지문 및 제약 조건 — Writer/Reviewer 공통 근거]\n"
+        + f"문제 제목: {chosen.get('title', '')}\n"
+        + f"원문 URL: {chosen.get('link', '')}\n\n"
+        + context
+    )
+    return {
+        "context_text": context,
+        "review_context": source_evidence,
+        "source_url": chosen.get("link"),
+        "sources": [{"platform": "LeetCode", "title": chosen["title"], "url": chosen.get("link"), "author": None}],
+    }
 
 
 SPEC = TopicSpec(
@@ -59,10 +69,11 @@ SPEC = TopicSpec(
     reviewer_goal="풀이가 정확하고 실제로 동작할 법한 코드인지, 번역이 정확한지 검토한다",
     reviewer_checklist=(
         "제목이 실제 문제의 목적/개념을 구체적으로 나타내며 '핵심 키워드' 같은 임시 제목이 아닌가, "
-        "'문제' 섹션이 영어 원문을 정확히 반영하면서도 한국어로 자연스럽게 "
-        "요약됐는가, 코드가 문법적으로 타당하고 문제의 입출력 조건에 맞을 것으로 "
-        "보이는가, 시간복잡도가 명시되어 있는가, '다른 풀이 방법'이 실제로 다른 "
-        "접근인가(같은 풀이를 변수명만 바꾼 것이 아닌가)"
+        "'문제' 섹션이 원문 지문과 예시·제약 조건을 정확히 반영하면서도 한국어로 자연스럽게 "
+        "요약됐는가, 각 Python 코드 블록이 문법적으로 유효하고 필요한 typing/표준 라이브러리 import를 "
+        "포함하는가, pass·...·NotImplementedError만 있는 미완성 함수나 실행 불가능한 최상위 return이 "
+        "남아 있지 않은가, 코드가 문제의 입출력 조건과 경계 사례에 맞는가, 시간·공간 복잡도가 실제 "
+        "구현을 기준으로 설명됐는가, '다른 풀이 방법'이 실제로 다른 접근인가(같은 풀이를 변수명만 바꾼 것이 아닌가)"
     ),
     build_context=_build_context,
     category_prefix_en="[Coding Test]",
@@ -70,7 +81,11 @@ SPEC = TopicSpec(
     code_required_sections=("풀이",),
     extra_writer_rules=(
         "- 제목은 [코딩테스트]로 시작하되, '핵심 키워드' 같은 임시 표현을 쓰지 말고 실제 문제명 또는 핵심 알고리즘을 구체적으로 나타낼 것\n"
-        "- 풀이: 전체 코드를 코드블록으로 넣고, 시간복잡도와 공간복잡도를 명시할 것\n"
+        "- 문제 지문에 포함된 모든 예시와 핵심 제약 조건을 원문과 대조하고, 예시 입력·출력을 임의로 바꾸지 말 것\n"
+        "- 풀이: 제출 가능한 전체 코드를 코드블록으로 넣고, 시간복잡도와 공간복잡도를 실제 구현 기준으로 설명할 것\n"
+        "- 모든 Python 코드블록은 각각 독립적으로 복사해 실행할 수 있도록 필요한 import를 포함할 것. 앞 코드블록에서 import했다고 가정하지 말 것\n"
+        "- TreeNode/ListNode 등 LeetCode 실행기가 제공하는 타입은 플랫폼 제공 타입임을 설명하고, 로컬 실행 예시가 필요하면 최소 정의를 함께 제공할 것\n"
+        "- pass, ..., NotImplementedError만 있는 함수 뼈대나 최상위 return 문을 풀이/대안 코드로 제시하지 말 것\n"
         "- 다른 풀이 방법: 접근이 실제로 다른 풀이만(예: 완전탐색 vs 해시맵), 복잡도 비교 포함"
     ),
 )
