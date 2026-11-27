@@ -11,8 +11,9 @@ import re
 from typing import Callable, Iterator
 
 
-_OPEN_RE = re.compile(r"^ {0,3}(\`{3,}|~{3,})(.*)$")
-_CLOSE_RE = re.compile(r"^ {0,3}(\`+|~+)[ \t]*$")
+_BACKTICK = chr(96)
+_OPEN_RE = re.compile(r"^ {0,3}(\x60{3,}|~{3,})(.*)$")
+_CLOSE_RE = re.compile(r"^ {0,3}(\x60+|~+)[ \t]*$")
 
 
 @dataclass(frozen=True)
@@ -52,7 +53,7 @@ def iter_fenced_code_blocks(text: str) -> Iterator[FencedCodeBlock]:
         marker = opening.group(1)
         info = opening.group(2).strip()
         # CommonMark forbids backticks in the info string of a backtick fence.
-        if marker[0] == "\`" and "\`" in info:
+        if marker[0] == _BACKTICK and _BACKTICK in info:
             index += 1
             continue
 
@@ -123,7 +124,8 @@ def normalize_fenced_code_blocks(text: str) -> str:
         if not block.complete:
             return block.raw
         body = block.body.rstrip("\r\n")
-        return f"\`\`\`{block.info}\n{body}\n\`\`\`"
+        fence = _BACKTICK * 3
+        return f"{fence}{block.info}\n{body}\n{fence}"
 
     return replace_fenced_code_blocks(text, normalize)
 
