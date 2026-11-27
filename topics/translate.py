@@ -19,6 +19,24 @@ _COMMENT_STARTS = ("#", "//", "--", "/*", "*")
 _SECTION_MARKER = re.compile(r"^\[SECTION\s+(\d+)\]\s*(?:[-:—]\s*)?(.+?)\s*$", re.IGNORECASE)
 _INLINE_COMMENT = re.compile(r"\s+(?:#|//|--)\s.*$")
 
+_GENERIC_TITLE_PLACEHOLDERS = {
+    "core keyword", "core keywords", "key concept", "key concepts",
+    "general overview", "overview", "introduction", "summary", "main topic",
+}
+
+
+def _title_specificity_issue(title: str, prefix: str) -> str | None:
+    value = (title or "").strip()
+    if value.startswith(prefix):
+        value = value[len(prefix):].strip(" :：-–—")
+    normalized = re.sub(r"[^a-z0-9]+", " ", value.casefold()).strip()
+    if normalized in _GENERIC_TITLE_PLACEHOLDERS:
+        return "영문 제목이 일반적인 임시 제목입니다. 실제 문제명이나 알고리즘 주제를 구체적으로 번역할 것"
+    if len(normalized.split()) == 1 and normalized in {"keyword", "keywords", "topic", "problem"}:
+        return "영문 제목이 실제 소재를 식별하지 못합니다. 문제명이나 구체적인 기술 주제를 제목에 포함할 것"
+    return None
+
+
 
 def _blocks(text: str) -> list[str]:
     return [block.raw for block in iter_fenced_code_blocks(text or "")]
@@ -81,6 +99,9 @@ def _fixed_translation_issues(spec, ko: dict, en: dict | None) -> list:
     issues = []
     if not en["title"].startswith(spec.category_prefix_en):
         issues.append(f"Title must start with '{spec.category_prefix_en}'")
+    title_issue = _title_specificity_issue(en["title"], spec.category_prefix_en)
+    if title_issue:
+        issues.append(title_issue)
     if _HANGUL.search(_outside_code(en["title"] + " " + en["summary"])):
         issues.append("Title/Summary에 한글이 남아 있음")
     for ko_name, en_name in zip(spec.section_names, spec.section_names_en):
@@ -113,6 +134,7 @@ def _flexible_translation_prompt(spec, ko: dict) -> str:
         "- Preserve exactly the same number and order of sections. Do not merge, split, add, or omit sections.\n"
         "- Every output heading MUST begin with its matching marker, exactly '[SECTION N] ', followed by a concise English heading.\n"
         "- Keep executable code blocks (Python, shell, JSON, etc.) exactly as written. For fenced 'flow' diagrams only, translate visible labels into English while preserving every line and arrow connector in the same order.\n"
+        "- Translate the actual subject/problem name in the title. Never use generic placeholders such as Core Keywords, Core Keyword, Overview, or Key Concepts.\n"
         "- Do not add facts, examples, metrics, or claims. Translate only the supplied content.\n"
         "- Use clear, natural English. No Korean characters outside code blocks.\n"
         f"- The title must start with '{spec.category_prefix_en}'.\n"
@@ -136,6 +158,7 @@ def _fixed_translation_prompt(spec, ko: dict) -> str:
         "Translate the following Korean developer note into natural English.\n\n"
         "Rules:\n"
         "- Keep executable code blocks exactly as is. In fenced 'flow' diagrams, translate visible labels but preserve line count and arrow connectors. Never change commands, error messages, filenames, or identifiers.\n"
+        "- Translate the actual subject/problem name in the title. Never use generic placeholders such as Core Keywords, Core Keyword, Overview, or Key Concepts.\n"
         "- Do not add or remove information. Keep the same number of code blocks in every section.\n"
         f"- The title must start with '{spec.category_prefix_en}'.\n"
         "- Section headers must use this exact mapping:\n" + header_map + "\n"
@@ -153,6 +176,9 @@ def _translate_flexible_result(spec, ko: dict, raw: str) -> tuple[dict | None, l
     issues = []
     if not parsed["title"].startswith(spec.category_prefix_en):
         issues.append(f"Title must start with '{spec.category_prefix_en}'")
+    title_issue = _title_specificity_issue(parsed["title"], spec.category_prefix_en)
+    if title_issue:
+        issues.append(title_issue)
     if not parsed["summary"].strip():
         issues.append("영문 Summary가 비어 있음")
     if _HANGUL.search(_outside_code(parsed["title"] + " " + parsed["summary"])):
