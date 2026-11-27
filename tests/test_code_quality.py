@@ -109,6 +109,12 @@ class PythonCodeQualityTests(unittest.TestCase):
         )
         self.assertEqual(validate_code_languages(source), [])
 
+    def test_language_validator_flags_unlabeled_solution_code(self):
+        source = "~~~\ndef solve():\n    return 1\n~~~"
+        issues = validate_code_languages(source)
+
+        self.assertTrue(any("언어 정보가 없습니다" in issue for issue in issues))
+
 
 if __name__ == "__main__":
     unittest.main()
