@@ -11,7 +11,7 @@ from crewai import Task, Crew, Process
 
 from crew_builder import build_translator_agent
 from topics.note_format import parse_note_text
-from output.note import _FENCE_RE
+from verify.code_blocks import iter_fenced_code_blocks, mask_fenced_code_blocks, replace_fenced_code_blocks
 
 MAX_ATTEMPTS = 3
 _HANGUL = re.compile(r"[가-힣]")
@@ -20,59 +20,53 @@ _SECTION_MARKER = re.compile(r"^\[SECTION\s+(\d+)\]\s*(?:[-:—]\s*)?(.+?)\s*$",
 _INLINE_COMMENT = re.compile(r"\s+(?:#|//|--)\s.*$")
 
 
-def _blocks(text: str) -> list:
-    return [m.group(0) for m in _FENCE_RE.finditer(text or "")]
+def _blocks(text: str) -> list[str]:
+    return [block.raw for block in iter_fenced_code_blocks(text or "")]
 
-
-def _code_signature(block: str) -> list:
+def _code_signature(block: str) -> list[str]:
     """Compare executable lines while ignoring comments that may be translated."""
-    inner = block.strip().strip("`")
-    inner = re.sub(r"^[A-Za-z0-9_+#-]+(?=[ \t]|\r?\n)", "", inner, count=1)
+    parsed = list(iter_fenced_code_blocks(block or ""))
+    if not parsed:
+        return []
     lines = []
-    for line in inner.splitlines():
+    for line in parsed[0].body.splitlines():
         value = _INLINE_COMMENT.sub("", line.strip())
         if value and not value.startswith(_COMMENT_STARTS):
             lines.append(value)
     return lines
 
-
 def _outside_code(text: str) -> str:
-    text = _FENCE_RE.sub(" ", text or "")
+    text = mask_fenced_code_blocks(text or "")
     return re.sub(r"`[^`]*`", " ", text)
 
-
 def _block_language(block: str) -> str:
-    match = re.match(r"^\`\`\`([A-Za-z0-9_+#-]+)", block.strip())
-    return match.group(1).lower() if match else ""
-
+    parsed = list(iter_fenced_code_blocks(block or ""))
+    return parsed[0].language if parsed else ""
 
 def _flow_structure(block: str) -> tuple:
     """Keep flow diagram line/arrow structure while allowing labels to be translated."""
-    inner = re.sub(r"^\`\`\`[A-Za-z0-9_+#-]+\s*", "", block.strip())
-    inner = re.sub(r"\s*\`\`\`$", "", inner)
-    lines = inner.splitlines()
+    parsed = list(iter_fenced_code_blocks(block or ""))
+    if not parsed:
+        return (0, ())
+    lines = parsed[0].body.splitlines()
     connectors = re.compile(r"(?:→|->|-->|⇒|⇢)")
     return len(lines), tuple(tuple(connectors.findall(line)) for line in lines)
 
-
 def restore_code_blocks(en_text: str, ko_text: str) -> str:
     """Preserve executable code; allow flow labels to be translated without changing diagram structure."""
-    ko_blocks = _blocks(ko_text)
-    iterator = iter(ko_blocks)
+    ko_blocks = iter(_blocks(ko_text))
 
-    def replace(match):
-        original = next(iterator, None)
+    def replace(block):
+        original = next(ko_blocks, None)
         if original is None:
-            return match.group(0)
-        translated = match.group(0)
-        if _block_language(translated) != _block_language(original):
+            return block.raw
+        if _block_language(block.raw) != _block_language(original):
             return original
         if _block_language(original) == "flow":
-            return translated if _flow_structure(translated) == _flow_structure(original) else original
-        return translated if _code_signature(translated) == _code_signature(original) else original
+            return block.raw if _flow_structure(block.raw) == _flow_structure(original) else original
+        return block.raw if _code_signature(block.raw) == _code_signature(original) else original
 
-    return _FENCE_RE.sub(replace, en_text)
-
+    return replace_fenced_code_blocks(en_text, replace)
 
 def _ko_markdown(spec, ko: dict) -> str:
     parts = [f"제목: {ko['title']}", f"요약: {ko['summary']}", ""]
