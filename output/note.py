@@ -37,7 +37,7 @@ _FENCE_RE = re.compile(r"```(.*?)```", re.DOTALL)
 def normalize_code_fences(text: str) -> str:
     """Normalize backtick/tilde Markdown fences before rendering MDX."""
     out = normalize_fenced_code_blocks(text)
-    return re.sub(r"\\n{3,}", "\\n\\n", out).strip()
+    return re.sub(r"\n{3,}", "\n\n", out).strip()
 
 
 def _yaml_str(s: str) -> str:
