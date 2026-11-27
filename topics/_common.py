@@ -29,7 +29,7 @@ from verify.code_blocks import iter_fenced_code_blocks
 from verify.code_quality import validate_python_code_blocks
 from verify.repository_paths import find_unverified_repository_paths as _find_unverified_repository_paths
 from topics.note_format import parse_note_text
-from output.note import render_note, render_note_en, _FENCE_RE
+from output.note import render_note, render_note_en
 from topics.translate import translate_note
 
 MAX_CONTEXT_ATTEMPTS = 4   # 상세 자료가 비어 있는 후보를 건너뛰며 시도할 최대 횟수
