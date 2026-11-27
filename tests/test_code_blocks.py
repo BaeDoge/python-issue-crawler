@@ -37,6 +37,17 @@ class MarkdownFenceTests(unittest.TestCase):
         self.assertNotIn("~~~~", normalized)
         self.assertEqual(normalize_fenced_code_blocks(normalized), normalized)
 
+    def test_normalizer_keeps_nested_backtick_fences_inside_outer_block(self):
+        fence = chr(96) * 3
+        source = "~~~~markdown\n" + fence + "python\nprint(1)\n" + fence + "\n~~~~"
+        normalized = normalize_fenced_code_blocks(source)
+        blocks = list(iter_fenced_code_blocks(normalized))
+
+        self.assertEqual(len(blocks), 1)
+        self.assertTrue(blocks[0].complete)
+        self.assertGreaterEqual(len(blocks[0].marker), 4)
+        self.assertIn(fence + "python", blocks[0].body)
+
     def test_masks_code_without_changing_line_count(self):
         source = "한글 설명\n~~~~python\nこれはコード\n~~~~\n다음 설명"
         masked = mask_fenced_code_blocks(source)
