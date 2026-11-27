@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 os.environ.setdefault("OMNIROUTE_API_KEY", "unit-test-only")
 
-from topics.translate import _translate_flexible_result, _title_specificity_issue
+from topics.translate import _fixed_translation_issues, _translate_flexible_result, _title_specificity_issue
 from publish.git_publish import PublishError, _publish_to_repo, _english_post_destination
 
 
@@ -109,6 +109,23 @@ Accuracy and latency can vary by task and model.
         issue = _title_specificity_issue("[Coding Test] Reverse Bits", "[Coding Test]")
 
         self.assertIsNone(issue)
+
+    def test_fixed_translation_rejects_unclosed_fence(self):
+        spec = SimpleNamespace(
+            category_prefix_en="[Coding Test]",
+            section_names=("문제",),
+            section_names_en=("Problem",),
+        )
+        ko = {"sections": {"문제": "설명"}}
+        en = {
+            "title": "[Coding Test] Reverse Bits",
+            "summary": "Reverse a 32-bit integer.",
+            "sections": {"Problem": "~~~~python\nvalue = 1\n"},
+        }
+
+        issues = _fixed_translation_issues(spec, ko, en)
+
+        self.assertTrue(any("닫히지 않은 코드 펜스" in issue for issue in issues))
 
 
     def test_rejects_missing_or_reordered_section_markers(self):
