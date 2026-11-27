@@ -2,6 +2,7 @@ import unittest
 
 from verify.code_quality import validate_python_code_blocks, validate_code_languages
 from verify.quality import has_noop_loop_code
+from topics._common import has_real_code
 
 
 class PythonCodeQualityTests(unittest.TestCase):
@@ -114,6 +115,14 @@ class PythonCodeQualityTests(unittest.TestCase):
         issues = validate_code_languages(source)
 
         self.assertTrue(any("언어 정보가 없습니다" in issue for issue in issues))
+
+    def test_text_output_block_does_not_satisfy_required_code(self):
+        source = "~~~text\nInput: [1, 2, 3]\nOutput: [1, 3, 2]\n~~~"
+        self.assertFalse(has_real_code(source))
+
+    def test_python_solution_block_satisfies_required_code(self):
+        source = "~~~python\ndef solve():\n    return 1\n~~~"
+        self.assertTrue(has_real_code(source))
 
 
 if __name__ == "__main__":
