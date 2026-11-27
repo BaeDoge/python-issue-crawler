@@ -181,7 +181,13 @@ def validate_code_languages(
         if not block.complete:
             continue
         language = block.language
-        if not language or language in allowed or language in non_code:
+        if not language:
+            issues.append(
+                f"코드 블록 {index}: 언어 정보가 없습니다. Python 코드라면 python 펜스를 지정하고, "
+                "입출력 예시라면 text 펜스를 사용할 것."
+            )
+            continue
+        if language in allowed or language in non_code:
             continue
         issues.append(
             f"코드 블록 {index}: {language} 언어 펜스가 있습니다. "
