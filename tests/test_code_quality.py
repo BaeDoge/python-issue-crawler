@@ -1,6 +1,6 @@
 import unittest
 
-from verify.code_quality import validate_python_code_blocks
+from verify.code_quality import validate_python_code_blocks, validate_code_languages
 from verify.quality import has_noop_loop_code
 
 
@@ -95,6 +95,19 @@ class PythonCodeQualityTests(unittest.TestCase):
     def test_noop_loop_detection_supports_tilde_fences(self):
         source = "~~~python\nfor item in values:\n    pass\n~~~"
         self.assertTrue(has_noop_loop_code(source))
+
+    def test_language_validator_rejects_java_in_python_algorithm_section(self):
+        source = "~~~java\nclass Solution {}\n~~~"
+        issues = validate_code_languages(source)
+
+        self.assertTrue(any("java" in issue for issue in issues))
+
+    def test_language_validator_accepts_python_and_text_examples(self):
+        source = (
+            "~~~python\ndef solve():\n    return 1\n~~~\n"
+            "~~~text\nInput: [1, 2, 3]\n~~~"
+        )
+        self.assertEqual(validate_code_languages(source), [])
 
 
 if __name__ == "__main__":
