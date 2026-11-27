@@ -18,7 +18,7 @@ import re
 import shutil
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 from verify.mdx import normalize_mdx_text
 
@@ -92,16 +92,28 @@ def _dedupe_sources(sources: list[dict] | None) -> list[dict]:
     return unique
 
 
+def _markdown_label(value: str) -> str:
+    """Escape literal HTML/JSX markers in Markdown link text."""
+    value = str(value)
+    return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("[", "\\[").replace("]", "\\]")
+
+
+def _markdown_url(value: str) -> str:
+    """Encode angle brackets and spaces in a Markdown URL destination."""
+    return quote(str(value), safe=":/?#[]@!&()*+,;=%")
+
+
 def _source_line(src: dict) -> str:
-    platform = src.get("platform") or "원문"
-    label = src.get("title") or src["url"]
-    line = f"- {platform}: [{label}]({src['url']})"
-    if src.get("author"):
-        line += f" — 작성자: {src['author']}"
-    if platform == "StackOverflow":
+    platform = _markdown_label(src.get("platform") or "원문")
+    label = _markdown_label(src.get("title") or src["url"])
+    url = _markdown_url(src["url"])
+    line = f"- {platform}: [{label}]({url})"
+    author = src.get("author")
+    if author:
+        line += f" — 작성자: {_markdown_label(author)}"
+    if src.get("platform") == "StackOverflow":
         line += " (CC BY-SA)"
     return line
-
 
 def render_note(
     *, content_type: str, title: str, summary: str, tag: str,
@@ -157,7 +169,9 @@ def render_note(
         safe_content, _ = normalize_mdx_text(normalize_code_fences(content))
         block = f"## {header}\n\n{safe_content}\n"
         for img in section_images.get(header, []):
-            block += f"\n![{img.get('alt', header)}]({img['url']})\n"
+            alt = _markdown_label(img.get("alt", header))
+            url = _markdown_url(img["url"])
+            block += f"\n![{alt}]({url})\n"
         body_parts.append(block)
 
     if sources:
@@ -187,14 +201,15 @@ def render_note(
 
 
 def _source_line_en(src: dict) -> str:
-    platform = src.get("platform") or "Source"
-    label = src.get("title") or src["url"]
-    line = f"- {platform}: [{label}]({src['url']})"
+    platform = _markdown_label(src.get("platform") or "Source")
+    label = _markdown_label(src.get("title") or src["url"])
+    url = _markdown_url(src["url"])
+    line = f"- {platform}: [{label}]({url})"
     author = src.get("author")
     if author:
         author = author.replace("(질문)", "(question)").replace("(답변)", "(answer)")
-        line += f" — Author: {author}"
-    if platform == "StackOverflow":
+        line += f" — Author: {_markdown_label(author)}"
+    if src.get("platform") == "StackOverflow":
         line += " (CC BY-SA)"
     return line
 
@@ -228,7 +243,9 @@ def render_note_en(
         safe_content, _ = normalize_mdx_text(normalize_code_fences(content))
         block = f"## {header}\n\n{safe_content}\n"
         for img in section_images.get(header, []):
-            block += f"\n![{img['alt']}]({img['url']})\n"
+            alt = _markdown_label(img["alt"])
+            url = _markdown_url(img["url"])
+            block += f"\n![{alt}]({url})\n"
         body_parts.append(block)
 
     sources = _dedupe_sources(ko_result.get("sources", []))

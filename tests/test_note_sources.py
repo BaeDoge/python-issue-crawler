@@ -1,6 +1,6 @@
 import unittest
 
-from output.note import _dedupe_sources
+from output.note import _dedupe_sources, _source_line, _source_line_en
 
 
 class PaperSourceLinkTests(unittest.TestCase):
@@ -45,6 +45,34 @@ class PaperSourceLinkTests(unittest.TestCase):
 
         self.assertEqual(len(unique), 1)
         self.assertEqual(unique[0]["platform"], "논문")
+
+    def test_source_markdown_escapes_html_like_labels_and_url_brackets(self):
+        source = {
+            "platform": "Reference <script>",
+            "title": "Example <script>alert(1)</script> [paper]",
+            "url": "https://example.com/paper/<script>?q=1",
+            "author": "A. Author <iframe>",
+        }
+
+        rendered = _source_line(source)
+
+        self.assertIn("Reference &lt;script&gt;", rendered)
+        self.assertIn("Example &lt;script&gt;alert(1)&lt;/script&gt; \\[paper\\]", rendered)
+        self.assertIn("https://example.com/paper/%3Cscript%3E?q=1", rendered)
+        self.assertIn("A. Author &lt;iframe&gt;", rendered)
+
+    def test_english_source_markdown_uses_the_same_safe_url_rules(self):
+        source = {
+            "platform": "Source",
+            "title": "A title <script>",
+            "url": "https://example.com/path/<script>",
+            "author": "A. Author",
+        }
+
+        rendered = _source_line_en(source)
+
+        self.assertIn("A title &lt;script&gt;", rendered)
+        self.assertIn("https://example.com/path/%3Cscript%3E", rendered)
 
 
 if __name__ == "__main__":
