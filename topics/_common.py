@@ -95,7 +95,10 @@ def _has_non_polite_korean(text: str) -> bool:
 
 def has_real_code(content: str) -> bool:
     """Return True when at least one fenced block contains non-comment code."""
+    non_code_languages = {"text", "txt", "plain", "plaintext", "console", "output", "flow", "mermaid", "json", "yaml", "yml"}
     for block in iter_fenced_code_blocks(content or ""):
+        if block.language in non_code_languages:
+            continue
         for line in block.body.splitlines():
             value = line.strip()
             if value and not value.startswith(("#", "//", "--", "/*", "*")):
