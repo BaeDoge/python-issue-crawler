@@ -1,6 +1,6 @@
 import unittest
 
-from topics.note_format import parse_note_text
+from topics.note_format import _unwrap_outer_fence, parse_note_text
 from verify.code_blocks import (
     iter_fenced_code_blocks,
     mask_fenced_code_blocks,
@@ -45,6 +45,13 @@ class MarkdownFenceTests(unittest.TestCase):
         self.assertIn("한글 설명", masked)
         self.assertIn("다음 설명", masked)
         self.assertNotIn("これはコード", masked)
+
+    def test_unwraps_outer_tilde_markdown_fence(self):
+        source = "~~~~markdown\n제목: sample\n## 풀이\ntext\n~~~~"
+        unwrapped = _unwrap_outer_fence(source)
+
+        self.assertIn("제목: sample", unwrapped)
+        self.assertNotIn("~~~~markdown", unwrapped)
 
     def test_unclosed_fence_is_reported_as_incomplete(self):
         blocks = list(iter_fenced_code_blocks("본문\n~~~python\nprint(1)\n"))
