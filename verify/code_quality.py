@@ -142,10 +142,12 @@ def validate_python_code_blocks(text: str) -> list[str]:
             continue
         try:
             tree = ast.parse(block.body)
+            # ast.parse alone accepts context-sensitive errors such as a module-level return.
+            compile(tree, f"<mdx-python-block-{index}>", "exec")
         except SyntaxError as exc:
             line = exc.lineno or 1
             message = (exc.msg or "SyntaxError").strip()
-            issues.append(f"Python 코드 블록 {index}: 문법 오류({line}행, {message}). 복사 실행 가능한 코드로 수정할 것.")
+            issues.append(f"Python 코드 블록 {index}: 문법 오류 또는 컴파일 오류({line}행, {message}). 복사 실행 가능한 코드로 수정할 것.")
             continue
 
         if _has_placeholder_function(tree):
