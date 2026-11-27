@@ -26,7 +26,7 @@ from config import OUTPUT_DIR, LOG_DIR, QUALITY_ATTEMPTS, PUBLISH_TARGETS, CLOUD
 from crew_builder import build_scout_agent, build_writer_agent, build_reviewer_agent, build_cloud_repair_agent
 from verify.quality import refine_loop, detect_foreign_language_mixing, build_revision_prompt, has_noop_loop_code
 from verify.code_blocks import iter_fenced_code_blocks
-from verify.code_quality import validate_python_code_blocks
+from verify.code_quality import validate_python_code_blocks, validate_code_languages
 from verify.repository_paths import find_unverified_repository_paths as _find_unverified_repository_paths
 from topics.note_format import parse_note_text
 from output.note import render_note, render_note_en
@@ -281,6 +281,9 @@ def _deterministic_check(
                 issues.append("해결 방법에 동작이 없는 for/while 루프(pass만 실행)가 있습니다. 실제 예외를 제거하는 실행 가능한 수정 코드로 바꿀 것")
             code_issues = validate_python_code_blocks(content)
             issues.extend(f"'{name}' 섹션: {issue}" for issue in code_issues)
+            if spec.key == "algorithm" and name in {"풀이", "다른 풀이 방법"}:
+                language_issues = validate_code_languages(content)
+                issues.extend(f"'{name}' 섹션: {issue}" for issue in language_issues)
             for phrase in spec.forbidden_phrases.get(name, ()):
                 if phrase in content:
                     issues.append(f"'{name}' 섹션에 '{phrase}' 표현이 있음 — 독자가 실제로 따라 할 수 있는 "
