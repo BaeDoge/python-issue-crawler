@@ -110,6 +110,8 @@ def _fixed_translation_issues(spec, ko: dict, en: dict | None) -> list:
         if not en_text.strip():
             issues.append(f"'## {en_name}' 섹션이 비어 있음")
             continue
+        if any(not block.complete for block in iter_fenced_code_blocks(en_text)):
+            issues.append(f"'{en_name}' 섹션에 닫히지 않은 코드 펜스가 있습니다.")
         if len(_blocks(en_text)) != len(_blocks(ko_text)):
             issues.append(f"'{en_name}' 섹션의 코드블록 개수가 원문({len(_blocks(ko_text))}개)과 다름")
         if _HANGUL.search(_outside_code(en_text)):
@@ -205,6 +207,8 @@ def _translate_flexible_result(spec, ko: dict, raw: str) -> tuple[dict | None, l
             continue
         if _HANGUL.search(_outside_code(en_heading + " " + en_body)):
             issues.append(f"'{en_heading}' 섹션에 코드 밖 한글이 남아 있음")
+        if any(not block.complete for block in iter_fenced_code_blocks(en_body)):
+            issues.append(f"'{en_heading}' 섹션에 닫히지 않은 코드 펜스가 있습니다.")
         if len(_blocks(en_body)) != len(_blocks(ko_body)):
             issues.append(f"'{en_heading}' 섹션의 코드블록 개수가 원문과 다름")
         translated_sections[en_heading] = restore_code_blocks(en_body, ko_body)
