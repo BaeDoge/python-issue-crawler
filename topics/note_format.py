@@ -49,7 +49,7 @@ def _unwrap_outer_fence(text: str) -> str:
         and blocks[0].end == len(stripped)
         and blocks[0].language in {"markdown", "md", "text"}
     ):
-        return blocks[0].body.strip("\\r\\n")
+        return blocks[0].body.strip("\r\n")
     return text
 
 
