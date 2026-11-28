@@ -11,7 +11,7 @@ from crewai import Task, Crew, Process
 
 from crew_builder import build_translator_agent
 from topics.note_format import parse_note_text
-from output.note import _FENCE_RE
+from verify.code_blocks import iter_fenced_code_blocks, mask_fenced_code_blocks, replace_fenced_code_blocks
 
 MAX_ATTEMPTS = 3
 _HANGUL = re.compile(r"[가-힣]")
@@ -19,60 +19,72 @@ _COMMENT_STARTS = ("#", "//", "--", "/*", "*")
 _SECTION_MARKER = re.compile(r"^\[SECTION\s+(\d+)\]\s*(?:[-:—]\s*)?(.+?)\s*$", re.IGNORECASE)
 _INLINE_COMMENT = re.compile(r"\s+(?:#|//|--)\s.*$")
 
+_GENERIC_TITLE_PLACEHOLDERS = {
+    "core keyword", "core keywords", "key concept", "key concepts",
+    "general overview", "overview", "introduction", "summary", "main topic",
+}
 
-def _blocks(text: str) -> list:
-    return [m.group(0) for m in _FENCE_RE.finditer(text or "")]
+
+def _title_specificity_issue(title: str, prefix: str) -> str | None:
+    value = (title or "").strip()
+    if value.startswith(prefix):
+        value = value[len(prefix):].strip(" :：-–—")
+    normalized = re.sub(r"[^a-z0-9]+", " ", value.casefold()).strip()
+    if normalized in _GENERIC_TITLE_PLACEHOLDERS:
+        return "영문 제목이 일반적인 임시 제목입니다. 실제 문제명이나 알고리즘 주제를 구체적으로 번역할 것"
+    if len(normalized.split()) == 1 and normalized in {"keyword", "keywords", "topic", "problem"}:
+        return "영문 제목이 실제 소재를 식별하지 못합니다. 문제명이나 구체적인 기술 주제를 제목에 포함할 것"
+    return None
 
 
-def _code_signature(block: str) -> list:
+
+def _blocks(text: str) -> list[str]:
+    return [block.raw for block in iter_fenced_code_blocks(text or "")]
+
+def _code_signature(block: str) -> list[str]:
     """Compare executable lines while ignoring comments that may be translated."""
-    inner = block.strip().strip("`")
-    inner = re.sub(r"^[A-Za-z0-9_+#-]+(?=[ \t]|\r?\n)", "", inner, count=1)
+    parsed = list(iter_fenced_code_blocks(block or ""))
+    if not parsed:
+        return []
     lines = []
-    for line in inner.splitlines():
+    for line in parsed[0].body.splitlines():
         value = _INLINE_COMMENT.sub("", line.strip())
         if value and not value.startswith(_COMMENT_STARTS):
             lines.append(value)
     return lines
 
-
 def _outside_code(text: str) -> str:
-    text = _FENCE_RE.sub(" ", text or "")
+    text = mask_fenced_code_blocks(text or "")
     return re.sub(r"`[^`]*`", " ", text)
 
-
 def _block_language(block: str) -> str:
-    match = re.match(r"^\`\`\`([A-Za-z0-9_+#-]+)", block.strip())
-    return match.group(1).lower() if match else ""
-
+    parsed = list(iter_fenced_code_blocks(block or ""))
+    return parsed[0].language if parsed else ""
 
 def _flow_structure(block: str) -> tuple:
     """Keep flow diagram line/arrow structure while allowing labels to be translated."""
-    inner = re.sub(r"^\`\`\`[A-Za-z0-9_+#-]+\s*", "", block.strip())
-    inner = re.sub(r"\s*\`\`\`$", "", inner)
-    lines = inner.splitlines()
+    parsed = list(iter_fenced_code_blocks(block or ""))
+    if not parsed:
+        return (0, ())
+    lines = parsed[0].body.splitlines()
     connectors = re.compile(r"(?:→|->|-->|⇒|⇢)")
     return len(lines), tuple(tuple(connectors.findall(line)) for line in lines)
 
-
 def restore_code_blocks(en_text: str, ko_text: str) -> str:
     """Preserve executable code; allow flow labels to be translated without changing diagram structure."""
-    ko_blocks = _blocks(ko_text)
-    iterator = iter(ko_blocks)
+    ko_blocks = iter(_blocks(ko_text))
 
-    def replace(match):
-        original = next(iterator, None)
+    def replace(block):
+        original = next(ko_blocks, None)
         if original is None:
-            return match.group(0)
-        translated = match.group(0)
-        if _block_language(translated) != _block_language(original):
+            return block.raw
+        if _block_language(block.raw) != _block_language(original):
             return original
         if _block_language(original) == "flow":
-            return translated if _flow_structure(translated) == _flow_structure(original) else original
-        return translated if _code_signature(translated) == _code_signature(original) else original
+            return block.raw if _flow_structure(block.raw) == _flow_structure(original) else original
+        return block.raw if _code_signature(block.raw) == _code_signature(original) else original
 
-    return _FENCE_RE.sub(replace, en_text)
-
+    return replace_fenced_code_blocks(en_text, replace)
 
 def _ko_markdown(spec, ko: dict) -> str:
     parts = [f"제목: {ko['title']}", f"요약: {ko['summary']}", ""]
@@ -87,6 +99,9 @@ def _fixed_translation_issues(spec, ko: dict, en: dict | None) -> list:
     issues = []
     if not en["title"].startswith(spec.category_prefix_en):
         issues.append(f"Title must start with '{spec.category_prefix_en}'")
+    title_issue = _title_specificity_issue(en["title"], spec.category_prefix_en)
+    if title_issue:
+        issues.append(title_issue)
     if _HANGUL.search(_outside_code(en["title"] + " " + en["summary"])):
         issues.append("Title/Summary에 한글이 남아 있음")
     for ko_name, en_name in zip(spec.section_names, spec.section_names_en):
@@ -95,6 +110,8 @@ def _fixed_translation_issues(spec, ko: dict, en: dict | None) -> list:
         if not en_text.strip():
             issues.append(f"'## {en_name}' 섹션이 비어 있음")
             continue
+        if any(not block.complete for block in iter_fenced_code_blocks(en_text)):
+            issues.append(f"'{en_name}' 섹션에 닫히지 않은 코드 펜스가 있습니다.")
         if len(_blocks(en_text)) != len(_blocks(ko_text)):
             issues.append(f"'{en_name}' 섹션의 코드블록 개수가 원문({len(_blocks(ko_text))}개)과 다름")
         if _HANGUL.search(_outside_code(en_text)):
@@ -119,6 +136,7 @@ def _flexible_translation_prompt(spec, ko: dict) -> str:
         "- Preserve exactly the same number and order of sections. Do not merge, split, add, or omit sections.\n"
         "- Every output heading MUST begin with its matching marker, exactly '[SECTION N] ', followed by a concise English heading.\n"
         "- Keep executable code blocks (Python, shell, JSON, etc.) exactly as written. For fenced 'flow' diagrams only, translate visible labels into English while preserving every line and arrow connector in the same order.\n"
+        "- Translate the actual subject/problem name in the title. Never use generic placeholders such as Core Keywords, Core Keyword, Overview, or Key Concepts.\n"
         "- Do not add facts, examples, metrics, or claims. Translate only the supplied content.\n"
         "- Use clear, natural English. No Korean characters outside code blocks.\n"
         f"- The title must start with '{spec.category_prefix_en}'.\n"
@@ -142,6 +160,7 @@ def _fixed_translation_prompt(spec, ko: dict) -> str:
         "Translate the following Korean developer note into natural English.\n\n"
         "Rules:\n"
         "- Keep executable code blocks exactly as is. In fenced 'flow' diagrams, translate visible labels but preserve line count and arrow connectors. Never change commands, error messages, filenames, or identifiers.\n"
+        "- Translate the actual subject/problem name in the title. Never use generic placeholders such as Core Keywords, Core Keyword, Overview, or Key Concepts.\n"
         "- Do not add or remove information. Keep the same number of code blocks in every section.\n"
         f"- The title must start with '{spec.category_prefix_en}'.\n"
         "- Section headers must use this exact mapping:\n" + header_map + "\n"
@@ -159,6 +178,9 @@ def _translate_flexible_result(spec, ko: dict, raw: str) -> tuple[dict | None, l
     issues = []
     if not parsed["title"].startswith(spec.category_prefix_en):
         issues.append(f"Title must start with '{spec.category_prefix_en}'")
+    title_issue = _title_specificity_issue(parsed["title"], spec.category_prefix_en)
+    if title_issue:
+        issues.append(title_issue)
     if not parsed["summary"].strip():
         issues.append("영문 Summary가 비어 있음")
     if _HANGUL.search(_outside_code(parsed["title"] + " " + parsed["summary"])):
@@ -185,6 +207,8 @@ def _translate_flexible_result(spec, ko: dict, raw: str) -> tuple[dict | None, l
             continue
         if _HANGUL.search(_outside_code(en_heading + " " + en_body)):
             issues.append(f"'{en_heading}' 섹션에 코드 밖 한글이 남아 있음")
+        if any(not block.complete for block in iter_fenced_code_blocks(en_body)):
+            issues.append(f"'{en_heading}' 섹션에 닫히지 않은 코드 펜스가 있습니다.")
         if len(_blocks(en_body)) != len(_blocks(ko_body)):
             issues.append(f"'{en_heading}' 섹션의 코드블록 개수가 원문과 다름")
         translated_sections[en_heading] = restore_code_blocks(en_body, ko_body)

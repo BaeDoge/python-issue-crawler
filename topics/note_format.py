@@ -19,6 +19,8 @@ LLM이 안정적으로 따릅니다.
 
 import re
 
+from verify.code_blocks import iter_fenced_code_blocks
+
 _TITLE_RE = re.compile(r"^\s*(?:[-*]\s*)?(?:\*\*)?(?:제목|title)(?:\*\*)?\s*[:：]\s*(.+?)\s*$", re.IGNORECASE)
 _SUMMARY_RE = re.compile(r"^\s*(?:[-*]\s*)?(?:\*\*)?(?:요약|summary)(?:\*\*)?\s*[:：]\s*(.+?)\s*$", re.IGNORECASE)
 _HEADING_RE = re.compile(r"^\s{0,3}#{2,3}\s*(.+?)\s*#*\s*$")
@@ -38,9 +40,16 @@ def _clean_inline(s: str) -> str:
 
 
 def _unwrap_outer_fence(text: str) -> str:
-    lines = text.strip().splitlines()
-    if len(lines) >= 3 and re.match(r"^```(?:markdown|md|text)?\s*$", lines[0].strip()) and lines[-1].strip() == "```":
-        return "\n".join(lines[1:-1])
+    stripped = (text or "").strip()
+    blocks = list(iter_fenced_code_blocks(stripped))
+    if (
+        len(blocks) == 1
+        and blocks[0].complete
+        and blocks[0].start == 0
+        and blocks[0].end == len(stripped)
+        and blocks[0].language in {"", "markdown", "md", "text"}
+    ):
+        return blocks[0].body.strip("\r\n")
     return text
 
 
@@ -62,7 +71,7 @@ def parse_note_text(
     sections: dict = {}
     current = None
     buf: list = []
-    in_fence = False
+    fence_marker: tuple[str, int] | None = None
 
     def flush():
         if current is not None:
@@ -70,31 +79,48 @@ def parse_note_text(
 
     for line in text.splitlines():
         stripped = line.strip()
-        if not in_fence:
-            m = _TITLE_RE.match(line) if current is None else None
-            if m and not title:
-                title = _clean_inline(m.group(1))
-                continue
-            m = _SUMMARY_RE.match(line) if current is None else None
-            if m and not summary:
-                summary = _clean_inline(m.group(1))
-                continue
-            h = _HEADING_RE.match(line) or _BOLD_HEADING_RE.match(line)
-            if h:
-                is_nested_heading = line.lstrip().startswith("###")
-                if not (allow_dynamic_sections and is_nested_heading and current is not None):
-                    normalized = _norm(h.group(1))
-                    if normalized in names or allow_dynamic_sections:
-                        flush()
-                        heading = names.get(normalized) or _clean_inline(h.group(1))
-                        normalized_heading = _norm(heading).casefold()
-                        if normalized_heading.startswith(("출처", "sources", "references", "참고문헌", "참고자료")):
-                            current, buf = None, []
-                        else:
-                            current, buf = heading, []
-                        continue
-        if stripped.count("```") % 2 == 1:
-            in_fence = not in_fence
+
+        if fence_marker is not None:
+            closing = re.match(r"^(`+|~+)[ \\t]*$", stripped)
+            if (
+                closing
+                and closing.group(1)[0] == fence_marker[0]
+                and len(closing.group(1)) >= fence_marker[1]
+            ):
+                fence_marker = None
+            if current is not None:
+                buf.append(line)
+            continue
+
+        opening = re.match(r"^(`{3,}|~{3,})(.*)$", stripped)
+        if opening and not (opening.group(1)[0] == "`" and "`" in opening.group(2)):
+            fence_marker = (opening.group(1)[0], len(opening.group(1)))
+            if current is not None:
+                buf.append(line)
+            continue
+
+        m = _TITLE_RE.match(line) if current is None else None
+        if m and not title:
+            title = _clean_inline(m.group(1))
+            continue
+        m = _SUMMARY_RE.match(line) if current is None else None
+        if m and not summary:
+            summary = _clean_inline(m.group(1))
+            continue
+        h = _HEADING_RE.match(line) or _BOLD_HEADING_RE.match(line)
+        if h:
+            is_nested_heading = line.lstrip().startswith("###")
+            if not (allow_dynamic_sections and is_nested_heading and current is not None):
+                normalized = _norm(h.group(1))
+                if normalized in names or allow_dynamic_sections:
+                    flush()
+                    heading = names.get(normalized) or _clean_inline(h.group(1))
+                    normalized_heading = _norm(heading).casefold()
+                    if normalized_heading.startswith(("출처", "sources", "references", "참고문헌", "참고자료")):
+                        current, buf = None, []
+                    else:
+                        current, buf = heading, []
+                    continue
         if current is not None:
             buf.append(line)
     flush()

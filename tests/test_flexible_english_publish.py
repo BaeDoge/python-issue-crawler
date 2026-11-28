@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 os.environ.setdefault("OMNIROUTE_API_KEY", "unit-test-only")
 
-from topics.translate import _translate_flexible_result
+from topics.translate import _fixed_translation_issues, _translate_flexible_result, _title_specificity_issue
 from publish.git_publish import PublishError, _publish_to_repo, _english_post_destination
 
 
@@ -88,6 +88,44 @@ Accuracy and latency can vary by task and model.
         restored = restore_code_blocks(translated, korean)
 
         self.assertIn("```flow", restored)
+
+    def test_preserves_python_code_inside_tilde_fences(self):
+        from topics.translate import restore_code_blocks
+
+        korean = "내용\n\n~~~~python\nvalue = 1\n~~~~"
+        translated = "Text\n\n~~~~python\nvalue = 1\n~~~~"
+
+        restored = restore_code_blocks(translated, korean)
+
+        self.assertIn("~~~~python", restored)
+        self.assertIn("value = 1", restored)
+
+    def test_rejects_generic_placeholder_english_title(self):
+        issue = _title_specificity_issue("[Coding Test] Core Keywords", "[Coding Test]")
+
+        self.assertIsNotNone(issue)
+
+    def test_accepts_specific_english_title(self):
+        issue = _title_specificity_issue("[Coding Test] Reverse Bits", "[Coding Test]")
+
+        self.assertIsNone(issue)
+
+    def test_fixed_translation_rejects_unclosed_fence(self):
+        spec = SimpleNamespace(
+            category_prefix_en="[Coding Test]",
+            section_names=("문제",),
+            section_names_en=("Problem",),
+        )
+        ko = {"sections": {"문제": "설명"}}
+        en = {
+            "title": "[Coding Test] Reverse Bits",
+            "summary": "Reverse a 32-bit integer.",
+            "sections": {"Problem": "~~~~python\nvalue = 1\n"},
+        }
+
+        issues = _fixed_translation_issues(spec, ko, en)
+
+        self.assertTrue(any("닫히지 않은 코드 펜스" in issue for issue in issues))
 
 
     def test_rejects_missing_or_reordered_section_markers(self):
