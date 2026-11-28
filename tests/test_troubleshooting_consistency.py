@@ -104,6 +104,24 @@ class TroubleshootingConsistencyTests(unittest.TestCase):
 
         self.assertTrue(any("현상 섹션에 원문 오류 서명" in issue for issue in issues))
 
+    def test_rejects_cause_term_not_supported_by_source_even_if_written(self):
+        raw, sections, context = make_draft(cause_terms=["inventedCause"])
+        sections["원인"] += " inventedCause"
+
+        issues = validate_troubleshooting_consistency(raw, sections, review_context=context)
+
+        self.assertTrue(any("원인 근거 'inventedCause'" in issue for issue in issues))
+
+    def test_rejects_fix_term_not_supported_by_source_even_if_in_code(self):
+        raw, sections, context = make_draft(
+            fix_terms=["inventedFix"],
+            fix_code="value = data.inventedFix('username')",
+        )
+
+        issues = validate_troubleshooting_consistency(raw, sections, review_context=context)
+
+        self.assertTrue(any("해결 조치 근거 'inventedFix'" in issue for issue in issues))
+
     def test_rejects_cause_and_fix_anchor_mismatch(self):
         raw, sections, context = make_draft(cause_terms=["attribute"], fix_terms=["setdefault"])
         issues = validate_troubleshooting_consistency(raw, sections, review_context=context)
