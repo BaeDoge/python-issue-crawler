@@ -19,6 +19,40 @@ _COMMENT_STARTS = ("#", "//", "--", "/*", "*")
 _SECTION_MARKER = re.compile(r"^\[SECTION\s+(\d+)\]\s*(?:[-:—]\s*)?(.+?)\s*$", re.IGNORECASE)
 _INLINE_COMMENT = re.compile(r"\s+(?:#|//|--)\s.*$")
 
+_VERSION_ANCHOR_RE = re.compile(
+    r"\b(?:python|pandas|numpy|django|flask|fastapi|pytorch|torch|node(?:\.js)?|"
+    r"postgresql|mysql|cuda|ubuntu|windows|typescript|react|next\.js)\s+v?\d+(?:\.\d+){0,3}\b",
+    re.IGNORECASE,
+)
+_EXCEPTION_ANCHOR_RE = re.compile(r"\b[A-Z][A-Za-z0-9]*(?:Error|Exception|Warning)\b")
+_CLI_FLAG_ANCHOR_RE = re.compile(r"(?<!\w)--[A-Za-z][A-Za-z0-9-]*")
+
+
+def extract_technical_anchors(text: str) -> set[str]:
+    """Return inline-code commands/identifiers, version claims, errors, and CLI flags."""
+    value = text or ""
+    fence_char = chr(96)
+    inline_pattern = re.escape(fence_char) + r"([^" + fence_char + r"\n]{1,140})" + re.escape(fence_char)
+    anchors = {
+        match.group(1).strip()
+        for match in re.finditer(inline_pattern, value)
+        if match.group(1).strip()
+    }
+    anchors.update(match.group(0) for match in _VERSION_ANCHOR_RE.finditer(value))
+    anchors.update(match.group(0) for match in _EXCEPTION_ANCHOR_RE.finditer(value))
+    anchors.update(match.group(0) for match in _CLI_FLAG_ANCHOR_RE.finditer(value))
+    return anchors
+
+
+def missing_technical_anchors(korean_text: str, english_text: str) -> list[str]:
+    """Find technical literals that disappeared during translation."""
+    english = (english_text or "").casefold()
+    return sorted(
+        anchor for anchor in extract_technical_anchors(korean_text)
+        if anchor.casefold() not in english
+    )
+
+
 _GENERIC_TITLE_PLACEHOLDERS = {
     "core keyword", "core keywords", "key concept", "key concepts",
     "general overview", "overview", "introduction", "summary", "main topic",
@@ -116,6 +150,11 @@ def _fixed_translation_issues(spec, ko: dict, en: dict | None) -> list:
             issues.append(f"'{en_name}' 섹션의 코드블록 개수가 원문({len(_blocks(ko_text))}개)과 다름")
         if _HANGUL.search(_outside_code(en_text)):
             issues.append(f"'{en_name}' 섹션의 코드 밖 문장에 한글이 남아 있음")
+        if spec.key == "troubleshooting":
+            missing_anchors = missing_technical_anchors(ko_text, en_text)
+            if missing_anchors:
+                preview = ", ".join(missing_anchors[:5])
+                issues.append(f"'{en_name}' 섹션에서 기술 식별자/버전/명령이 누락되거나 변형됨: {preview}")
     return issues
 
 
