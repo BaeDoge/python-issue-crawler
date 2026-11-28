@@ -24,7 +24,7 @@ _VERSION_ANCHOR_RE = re.compile(
     r"postgresql|mysql|cuda|ubuntu|windows|typescript|react|next\.js)\s+v?\d+(?:\.\d+){0,3}(?![\d.])",
     re.IGNORECASE,
 )
-_EXCEPTION_ANCHOR_RE = re.compile(r"\b[A-Z][A-Za-z0-9]*(?:Error|Exception|Warning)\b")
+_EXCEPTION_ANCHOR_RE = re.compile(r"\b[A-Z][A-Za-z0-9]*(?:Error|Exception|Warning)(?![A-Za-z0-9_])")
 _CLI_FLAG_ANCHOR_RE = re.compile(r"(?<!\w)--[A-Za-z][A-Za-z0-9-]*")
 
 
