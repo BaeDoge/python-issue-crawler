@@ -285,7 +285,7 @@ SPEC = TopicSpec(
         "- 현상: 파이썬 버전/환경이 자료에 있으면 밝히고, 에러를 재현하는 최소 코드와 에러 출력 "
         "원문(traceback)을 각각 코드블록으로 그대로 넣을 것\n"
         "- 첫 섹션 헤더(## 현상) 바로 앞에 TROUBLESHOOTING_CHECKS HTML 주석을 정확히 한 번 작성할 것. 게시물 본문에 노출되면 안 되는 내부 검증 명세다.\n"
-        "- TROUBLESHOOTING_CHECKS JSON 형식 예시: <!-- TROUBLESHOOTING_CHECKS { \\"source_quote\\": \\"원문 질문/채택 답변에서 복사한 24자 이상의 연속 구절\\", \\"error_signature\\": \\"KeyError\\", \\"reproduction_block_index\\": 0, \\"fix_block_index\\": 0, \\"shared_terms\\": [\\"data\\"], \\"cause_terms\\": [\\"dictionary\\", \\"key\\"], \\"fix_terms\\": [\\"get\\"], \\"environment\\": {} } -->\n"
+        "- TROUBLESHOOTING_CHECKS JSON 형식 예시: <!-- TROUBLESHOOTING_CHECKS { \"source_quote\": \"원문 질문/채택 답변에서 복사한 24자 이상의 연속 구절\", \"error_signature\": \"KeyError\", \"reproduction_block_index\": 0, \"fix_block_index\": 0, \"shared_terms\": [\"data\"], \"cause_terms\": [\"dictionary\", \"key\"], \"fix_terms\": [\"get\"], \"environment\": {} } -->\n"
         "- source_quote는 제공된 StackOverflow 질문/채택 답변 또는 공식 문서에서 그대로 복사한 24자 이상 연속 구절이어야 하며 요약하거나 새로 만들지 말 것.\n"
         "- error_signature는 원문과 현상 섹션에 실제로 표시되는 예외명 또는 오류 메시지 일부를 정확히 지정할 것.\n"
         "- reproduction_block_index는 현상 섹션의 코드 펜스를 위에서부터 센 0 기반 인덱스, fix_block_index는 해결 방법 섹션의 코드 펜스 인덱스다. 오류 출력 블록과 실행 명령 블록을 포함해 모든 펜스를 센다.\n"
