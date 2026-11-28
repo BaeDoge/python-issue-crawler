@@ -150,7 +150,7 @@ def _fixed_translation_issues(spec, ko: dict, en: dict | None) -> list:
             issues.append(f"'{en_name}' 섹션의 코드블록 개수가 원문({len(_blocks(ko_text))}개)과 다름")
         if _HANGUL.search(_outside_code(en_text)):
             issues.append(f"'{en_name}' 섹션의 코드 밖 문장에 한글이 남아 있음")
-        if spec.key == "troubleshooting":
+        if getattr(spec, "key", "") == "troubleshooting":
             missing_anchors = missing_technical_anchors(ko_text, en_text)
             if missing_anchors:
                 preview = ", ".join(missing_anchors[:5])
