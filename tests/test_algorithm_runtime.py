@@ -57,12 +57,12 @@ class AlgorithmRuntimeTests(unittest.TestCase):
             {"args": [2], "expected": 2},
             {"args": [3], "expected": 3},
         ]
-        raw, sections = _draft("풀이", "def solve(value):\\n    return value", "solve", cases)
+        raw, sections = _draft("풀이", "def solve(value):\n    return value", "solve", cases)
         marker_start = raw.index("<!-- ALGORITHM_TESTS")
         marker_end = raw.index("-->", marker_start) + 3
         manifest = raw[marker_start:marker_end]
         without_manifest = raw[:marker_start] + raw[marker_end:]
-        misplaced = without_manifest.replace("## 풀이", "## 풀이\\n" + manifest, 1)
+        misplaced = without_manifest.replace("## 풀이", "## 풀이\n" + manifest, 1)
 
         specs, issues = parse_algorithm_test_manifest(misplaced, sections)
 
@@ -108,7 +108,7 @@ class AlgorithmRuntimeTests(unittest.TestCase):
             {"args": [2], "expected": 2},
             {"args": [3], "expected": 3},
         ]
-        raw, _ = _draft("풀이", "def solve(value):\\n    return value", "solve", cases)
+        raw, _ = _draft("풀이", "def solve(value):\n    return value", "solve", cases)
 
         parsed = parse_note_text(raw, ["풀이"])
 
@@ -118,13 +118,13 @@ class AlgorithmRuntimeTests(unittest.TestCase):
 
     def test_runs_list_node_inputs_and_outputs(self):
         source = (
-            "class Solution:\\n"
-            "    def middleNode(self, head):\\n"
-            "        slow = fast = head\\n"
-            "        while fast and fast.next:\\n"
-            "            slow = slow.next\\n"
-            "            fast = fast.next.next\\n"
-            "        return slow\\n"
+            "class Solution:\n"
+            "    def middleNode(self, head):\n"
+            "        slow = fast = head\n"
+            "        while fast and fast.next:\n"
+            "            slow = slow.next\n"
+            "            fast = fast.next.next\n"
+            "        return slow\n"
         )
         cases = [
             {"args": [{"__type__": "ListNode", "values": [1, 2, 3, 4, 5]}], "expected": [3, 4, 5], "source_example": True},
@@ -175,8 +175,8 @@ class AlgorithmRuntimeTests(unittest.TestCase):
         self.assertEqual(validate_and_run_algorithm_tests(raw, sections), [])
 
     def test_runs_alternative_solution_when_python_code_is_present(self):
-        primary = "def solve(value):\\n    return value * 2"
-        alternative = "def solve_alt(value):\\n    return sum([value, value])"
+        primary = "def solve(value):\n    return value * 2"
+        alternative = "def solve_alt(value):\n    return sum([value, value])"
         cases_primary = [
             {"args": [2], "expected": 4, "source_example": True},
             {"args": [0], "expected": 0},
@@ -194,17 +194,17 @@ class AlgorithmRuntimeTests(unittest.TestCase):
             ]
         }
         raw = (
-            "<!-- ALGORITHM_TESTS\\n"
+            "<!-- ALGORITHM_TESTS\n"
             + json.dumps(manifest, ensure_ascii=False)
-            + "\\n-->\\n"
-            + "제목: [코딩테스트] 테스트\\n"
-            + "요약: 실행 테스트\\n"
-            + "## 풀이\\n~~~python\\n" + primary + "\\n~~~\\n"
-            + "## 다른 풀이 방법\\n~~~python\\n" + alternative + "\\n~~~\\n"
+            + "\n-->\n"
+            + "제목: [코딩테스트] 테스트\n"
+            + "요약: 실행 테스트\n"
+            + "## 풀이\n~~~python\n" + primary + "\n~~~\n"
+            + "## 다른 풀이 방법\n~~~python\n" + alternative + "\n~~~\n"
         )
         sections = {
-            "풀이": "~~~python\\n" + primary + "\\n~~~",
-            "다른 풀이 방법": "~~~python\\n" + alternative + "\\n~~~",
+            "풀이": "~~~python\n" + primary + "\n~~~",
+            "다른 풀이 방법": "~~~python\n" + alternative + "\n~~~",
         }
 
         self.assertEqual(validate_and_run_algorithm_tests(raw, sections), [])
@@ -224,16 +224,16 @@ class AlgorithmRuntimeTests(unittest.TestCase):
 
     def test_allows_private_helper_methods(self):
         source = (
-            "class Solution:\\n"
-            "    def solve(self, value):\\n"
-            "        return self._double(value)\\n"
-            "    def _double(self, value):\\n"
-            "        return value * 2\\n"
+            "class Solution:\n"
+            "    def solve(self, value):\n"
+            "        return self._double(value)\n"
+            "    def _double(self, value):\n"
+            "        return value * 2\n"
         )
         self.assertEqual(_validate_solution_source(source), [])
 
     def test_rejects_dunder_attribute_access(self):
-        source = "def solve(value):\\n    return value.__class__"
+        source = "def solve(value):\n    return value.__class__"
         issues = _validate_solution_source(source)
 
         self.assertTrue(any("dunder" in issue or "내부/시스템" in issue for issue in issues))
