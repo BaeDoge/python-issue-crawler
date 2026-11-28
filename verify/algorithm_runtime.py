@@ -85,6 +85,16 @@ def _manifest_payload(raw: str) -> str | None:
     )
     if not marker:
         return None
+    all_markers = re.findall(
+        r"<!--\\s*" + re.escape(MANIFEST_MARKER) + r"\\b",
+        raw or "",
+        re.IGNORECASE,
+    )
+    if len(all_markers) != 1:
+        return None
+    first_heading = re.search(r"(?m)^\\s{0,3}##\\s+", raw or "")
+    if first_heading and marker.start() > first_heading.start():
+        return None
     body = marker.group(1)
     start = body.find("{")
     if start < 0:
@@ -271,11 +281,26 @@ def _validate_solution_source(source: str) -> list[str]:
                 issues.append("실행 코드의 상대 import는 허용하지 않습니다.")
             elif node.module.split(".", 1)[0] not in _ALLOWED_IMPORTS:
                 issues.append(f"실행 코드에서 허용하지 않는 import를 사용합니다: {node.module}.")
+            for alias in node.names:
+                if alias.name.startswith("_") or alias.name in _BLOCKED_CALLS or alias.name in {"sys", "os", "builtins", "subprocess", "socket", "pathlib", "ctypes", "importlib"}:
+                    issues.append(f"실행 코드에서 제한된 모듈 속성을 import합니다: {alias.name}.")
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.asname and alias.asname.startswith("__"):
+                    issues.append("실행 코드의 import 별칭에 dunder 이름을 사용할 수 없습니다.")
         elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
             if node.func.id in _BLOCKED_CALLS:
                 issues.append(f"실행 코드에서 제한된 함수 호출을 사용합니다: {node.func.id}.")
-        elif isinstance(node, ast.Attribute) and node.attr.startswith("_"):
-            issues.append("실행 코드에서 내부/dunder 속성 접근은 허용하지 않습니다.")
+        elif isinstance(node, ast.Attribute):
+            blocked_attributes = {
+                "sys", "os", "builtins", "subprocess", "socket", "pathlib",
+                "ctypes", "importlib", "environ", "modules", "system",
+                "popen", "spawn", "fork", "execv", "execve", "unlink",
+                "rmdir", "chmod", "chdir", "getenv", "connect",
+                "create_connection", "urlopen", "get_type_hints",
+            }
+            if node.attr.startswith("_") or node.attr in blocked_attributes:
+                issues.append("실행 코드에서 내부/시스템 접근 속성은 허용하지 않습니다.")
         elif isinstance(node, ast.Name) and node.id.startswith("__"):
             issues.append("실행 코드에서 dunder 이름 접근은 허용하지 않습니다.")
     return list(dict.fromkeys(issues))
