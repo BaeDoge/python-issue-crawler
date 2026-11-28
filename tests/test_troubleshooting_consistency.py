@@ -111,6 +111,16 @@ class TroubleshootingConsistencyTests(unittest.TestCase):
         self.assertTrue(any("원인 설명에 검증 기준 'attribute'" in issue for issue in issues))
         self.assertTrue(any("해결 방법에 실제 조치 앵커 'setdefault'" in issue for issue in issues))
 
+    def test_version_can_be_evidenced_elsewhere_in_source_context(self):
+        raw, sections, context = make_draft(
+            source_quote="reading data['username'] raises KeyError when the key is missing."
+        )
+
+        self.assertEqual(
+            validate_troubleshooting_consistency(raw, sections, review_context=context),
+            [],
+        )
+
     def test_rejects_unsupported_version_claim(self):
         raw, sections, context = make_draft(environment={"pandas": "3.0"})
         issues = validate_troubleshooting_consistency(raw, sections, review_context=context)
