@@ -178,11 +178,15 @@ def validate_troubleshooting_consistency(
 
     cause_terms = _valid_terms(manifest.get("cause_terms"), "cause_terms", issues)
     for term in cause_terms:
+        if not _contains_term(review_context, term):
+            issues.append(f"TROUBLESHOOTING_CHECKS: 원인 근거 '{term}'가 제공된 원문 자료에 없습니다.")
         if not _contains_term(cause, term):
             issues.append(f"원인 설명에 검증 기준 '{term}'가 없습니다.")
 
     fix_terms = _valid_terms(manifest.get("fix_terms"), "fix_terms", issues)
     for term in fix_terms:
+        if not _contains_term(review_context, term):
+            issues.append(f"TROUBLESHOOTING_CHECKS: 해결 조치 근거 '{term}'가 제공된 원문 자료에 없습니다.")
         if not _contains_term(solution, term):
             issues.append(f"해결 방법에 실제 조치 앵커 '{term}'가 없습니다.")
 
