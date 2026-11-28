@@ -1,6 +1,7 @@
 import json
 import unittest
 
+from topics.note_format import parse_note_text
 from verify.algorithm_runtime import (
     _validate_solution_source,
     parse_algorithm_test_manifest,
@@ -82,6 +83,39 @@ class AlgorithmRuntimeTests(unittest.TestCase):
         issues = validate_and_run_algorithm_tests(raw, sections)
 
         self.assertEqual(issues, [])
+
+    def test_hidden_manifest_is_not_rendered_as_a_note_section(self):
+        cases = [
+            {"args": [1], "expected": 1, "source_example": True},
+            {"args": [2], "expected": 2},
+            {"args": [3], "expected": 3},
+        ]
+        raw, _ = _draft("풀이", "def solve(value):\\n    return value", "solve", cases)
+
+        parsed = parse_note_text(raw, ["풀이"])
+
+        self.assertIsNotNone(parsed)
+        self.assertNotIn("ALGORITHM_TESTS", parsed["sections"]["풀이"])
+        self.assertNotIn("solutions", parsed["sections"]["풀이"])
+
+    def test_runs_list_node_inputs_and_outputs(self):
+        source = (
+            "class Solution:\\n"
+            "    def middleNode(self, head):\\n"
+            "        slow = fast = head\\n"
+            "        while fast and fast.next:\\n"
+            "            slow = slow.next\\n"
+            "            fast = fast.next.next\\n"
+            "        return slow\\n"
+        )
+        cases = [
+            {"args": [{"__type__": "ListNode", "values": [1, 2, 3, 4, 5]}], "expected": [3, 4, 5], "source_example": True},
+            {"args": [{"__type__": "ListNode", "values": [1, 2]}], "expected": [2]},
+            {"args": [{"__type__": "ListNode", "values": [9]}], "expected": [9]},
+        ]
+        raw, sections = _draft("풀이", source, "Solution.middleNode", cases)
+
+        self.assertEqual(validate_and_run_algorithm_tests(raw, sections), [])
 
     def test_runs_tree_node_inputs(self):
         source = (
