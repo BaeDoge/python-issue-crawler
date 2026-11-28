@@ -297,7 +297,11 @@ def _validate_solution_source(source: str) -> list[str]:
                 "rmdir", "chmod", "chdir", "getenv", "connect",
                 "create_connection", "urlopen", "get_type_hints",
             }
-            if node.attr.startswith("_") or node.attr in blocked_attributes:
+            blocked_private_attributes = {
+                "_os", "_sys", "_io", "_socket", "_ssl", "_subprocess",
+                "_posixsubprocess", "_getframe", "_modules",
+            }
+            if node.attr.startswith("__") or node.attr in blocked_private_attributes or node.attr in blocked_attributes:
                 issues.append("실행 코드에서 내부/시스템 접근 속성은 허용하지 않습니다.")
         elif isinstance(node, ast.Name) and node.id.startswith("__"):
             issues.append("실행 코드에서 dunder 이름 접근은 허용하지 않습니다.")
