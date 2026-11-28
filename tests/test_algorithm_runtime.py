@@ -222,6 +222,22 @@ class AlgorithmRuntimeTests(unittest.TestCase):
 
         self.assertTrue(any("결과 불일치" in issue for issue in issues))
 
+    def test_allows_private_helper_methods(self):
+        source = (
+            "class Solution:\\n"
+            "    def solve(self, value):\\n"
+            "        return self._double(value)\\n"
+            "    def _double(self, value):\\n"
+            "        return value * 2\\n"
+        )
+        self.assertEqual(_validate_solution_source(source), [])
+
+    def test_rejects_dunder_attribute_access(self):
+        source = "def solve(value):\\n    return value.__class__"
+        issues = _validate_solution_source(source)
+
+        self.assertTrue(any("dunder" in issue or "내부/시스템" in issue for issue in issues))
+
     def test_rejects_disallowed_imports_before_execution(self):
         source = "import os\n\ndef solve(value):\n    return value"
         issues = _validate_solution_source(source)
