@@ -77,12 +77,40 @@ class AlgorithmSolutionSpec:
     cases: tuple[dict[str, Any], ...]
 
 
-def _manifest_match(raw: str):
-    pattern = re.compile(
-        r"<!--\s*" + re.escape(MANIFEST_MARKER) + r"\s*(\{[\s\S]*?\})\s*-->",
+def _manifest_payload(raw: str) -> str | None:
+    marker = re.search(
+        r"<!--\s*" + re.escape(MANIFEST_MARKER) + r"\b([\s\S]*?)-->",
+        raw or "",
         re.IGNORECASE,
     )
-    return pattern.search(raw or "")
+    if not marker:
+        return None
+    body = marker.group(1)
+    start = body.find("{")
+    if start < 0:
+        return None
+    depth = 0
+    in_string = False
+    escaped = False
+    for index in range(start, len(body)):
+        char = body[index]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return body[start:index + 1]
+    return None
 
 
 def _is_json_value(value: Any) -> bool:
@@ -98,12 +126,11 @@ def parse_algorithm_test_manifest(
     sections: dict[str, str],
 ) -> tuple[list[AlgorithmSolutionSpec], list[str]]:
     """Parse and validate the hidden JSON test manifest embedded in a draft."""
-    match = _manifest_match(raw)
-    if not match:
+    payload = _manifest_payload(raw)
+    if not payload:
         return [], [
             "알고리즘 테스트 명세가 없습니다. 첫 섹션 헤더 앞에 ALGORITHM_TESTS JSON 주석을 추가할 것."
         ]
-    payload = match.group(1)
     if len(payload) > MAX_MANIFEST_CHARS:
         return [], ["알고리즘 테스트 명세가 너무 큽니다. 테스트 케이스 수와 입력 크기를 줄일 것."]
     try:
