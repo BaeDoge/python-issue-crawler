@@ -251,7 +251,7 @@ The manifest ties together:
 - error_signature: the error class/message present in both the source evidence and the Symptom section.
 - reproduction_block_index and fix_block_index: zero-based indexes of the fenced blocks in the Symptom and Solution sections.
 - shared_terms: 1–3 original identifiers/command tokens that must appear in the source quote, reproduction block, and fix block.
-- cause_terms and fix_terms: technical anchors that must appear in the Cause and Solution sections.
+- cause_terms and fix_terms: technical anchors that must appear in both the supplied source context and the Cause/Solution sections.
 - environment: optional package/runtime version claims; each must be supported by the fetched source context and stated in the article.
 
 The English translation validator also checks that inline code, version strings, exception names, and command-line flags are preserved. This is a traceability guard, not a semantic proof that every possible environment is fixed; the reviewer still checks whether the repair actually addresses the reported cause.
