@@ -51,6 +51,24 @@ class AlgorithmRuntimeTests(unittest.TestCase):
         self.assertEqual(len(specs), 1)
         self.assertEqual(len(specs[0].cases), 3)
 
+    def test_rejects_manifest_after_first_section_heading(self):
+        cases = [
+            {"args": [1], "expected": 1, "source_example": True},
+            {"args": [2], "expected": 2},
+            {"args": [3], "expected": 3},
+        ]
+        raw, sections = _draft("풀이", "def solve(value):\\n    return value", "solve", cases)
+        marker_start = raw.index("<!-- ALGORITHM_TESTS")
+        marker_end = raw.index("-->", marker_start) + 3
+        manifest = raw[marker_start:marker_end]
+        without_manifest = raw[:marker_start] + raw[marker_end:]
+        misplaced = without_manifest.replace("## 풀이", "## 풀이\\n" + manifest, 1)
+
+        specs, issues = parse_algorithm_test_manifest(misplaced, sections)
+
+        self.assertEqual(specs, [])
+        self.assertTrue(any("ALGORITHM_TESTS" in issue for issue in issues))
+
     def test_requires_at_least_one_official_example_case(self):
         cases = [
             {"args": [1], "expected": 1},
