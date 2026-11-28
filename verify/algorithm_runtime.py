@@ -288,6 +288,15 @@ import io
 import json
 import sys
 
+try:
+    import resource
+    resource.setrlimit(resource.RLIMIT_CPU, (2, 2))
+    resource.setrlimit(resource.RLIMIT_AS, (256 * 1024 * 1024, 256 * 1024 * 1024))
+    resource.setrlimit(resource.RLIMIT_FSIZE, (1024 * 1024, 1024 * 1024))
+    resource.setrlimit(resource.RLIMIT_NOFILE, (32, 32))
+except (ImportError, AttributeError, OSError, ValueError):
+    pass
+
 
 _ALLOWED_IMPORTS = {
     "array", "bisect", "collections", "copy", "decimal", "enum",
@@ -515,23 +524,6 @@ except Exception as exc:
 '''
 
 
-def _resource_limiter():
-    """Best-effort POSIX limits; Windows relies on the timeout and restricted runner."""
-    try:
-        import resource
-
-        if hasattr(resource, "RLIMIT_CPU"):
-            resource.setrlimit(resource.RLIMIT_CPU, (2, 2))
-        if hasattr(resource, "RLIMIT_AS"):
-            resource.setrlimit(resource.RLIMIT_AS, (256 * 1024 * 1024, 256 * 1024 * 1024))
-        if hasattr(resource, "RLIMIT_FSIZE"):
-            resource.setrlimit(resource.RLIMIT_FSIZE, (1024 * 1024, 1024 * 1024))
-        if hasattr(resource, "RLIMIT_NOFILE"):
-            resource.setrlimit(resource.RLIMIT_NOFILE, (32, 32))
-    except Exception:
-        pass
-
-
 def _run_one_solution(source: str, spec: AlgorithmSolutionSpec) -> list[str]:
     source_issues = _validate_solution_source(source)
     if source_issues:
@@ -551,9 +543,6 @@ def _run_one_solution(source: str, spec: AlgorithmSolutionSpec) -> list[str]:
             "PYTHONIOENCODING": "utf-8",
             "PYTHONUTF8": "1",
         }
-        kwargs: dict[str, Any] = {}
-        if os.name != "nt":
-            kwargs["preexec_fn"] = _resource_limiter
         command = [sys.executable, "-I", "-S", "-c", _RUNNER_SCRIPT]
         try:
             completed = subprocess.run(
@@ -567,7 +556,6 @@ def _run_one_solution(source: str, spec: AlgorithmSolutionSpec) -> list[str]:
                 env=env,
                 timeout=RUN_TIMEOUT_SECONDS,
                 check=False,
-                **kwargs,
             )
         except subprocess.TimeoutExpired:
             return [f"실행 제한 시간({RUN_TIMEOUT_SECONDS}초)을 초과했습니다. 무한 루프 또는 비효율적인 풀이를 확인할 것."]
