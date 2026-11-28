@@ -28,7 +28,7 @@ def make_draft(*, source_quote=SOURCE_QUOTE, shared_terms=None, cause_terms=None
     }
     fix_code = fix_code or "value = data.get('username')"
     symptom = (
-        "The original operation raises KeyError when the username key is absent.\n\n"
+        "In Python 3.11, the original operation raises KeyError when the username key is absent.\n\n"
         + FENCE + "python\n"
         + "value = data['username']\n"
         + FENCE
