@@ -41,3 +41,5 @@ jobs:
           uv run python tests/test_algorithm_reviewer_evidence.py
           uv run python tests/test_flexible_english_publish.py
           uv run python tests/test_troubleshooting_safety_guidance.py
+          uv run python tests/test_troubleshooting_consistency.py
+          uv run python tests/test_troubleshooting_translation_consistency.py
