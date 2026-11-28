@@ -27,6 +27,7 @@ from crew_builder import build_scout_agent, build_writer_agent, build_reviewer_a
 from verify.quality import refine_loop, detect_foreign_language_mixing, build_revision_prompt, has_noop_loop_code
 from verify.code_blocks import iter_fenced_code_blocks
 from verify.code_quality import validate_python_code_blocks, validate_code_languages
+from verify.troubleshooting_quality import validate_troubleshooting_consistency
 from verify.algorithm_runtime import validate_and_run_algorithm_tests
 from verify.repository_paths import find_unverified_repository_paths as _find_unverified_repository_paths
 from topics.note_format import parse_note_text
@@ -235,6 +236,7 @@ def _deterministic_check(
     spec: TopicSpec,
     repository_paths: list[str] | None = None,
     repository_tree_complete: bool = False,
+    review_context: str = "",
 ):
     def check(draft_raw: str) -> dict:
         data = parse_note_text(
@@ -296,6 +298,11 @@ def _deterministic_check(
         if spec.key == "algorithm":
             runtime_issues = validate_and_run_algorithm_tests(draft_raw, sections)
             issues.extend(runtime_issues)
+        elif spec.key == "troubleshooting":
+            consistency_issues = validate_troubleshooting_consistency(
+                draft_raw, sections, review_context=review_context
+            )
+            issues.extend(consistency_issues)
 
         all_text = title + " " + (data.get("summary", "") or "") + " " + json.dumps(sections, ensure_ascii=False)
         body_chars = sum(len((content or "").strip()) for _, content in section_items)
@@ -541,7 +548,10 @@ def run_topic(spec: TopicSpec) -> dict:
         critique_instructions=f"아래 '{spec.label}' 초안을 다음 기준으로 평가해라: {spec.reviewer_checklist}",
         expected_output=expected,
         deterministic_check_fn=_deterministic_check(
-            spec, ctx.get("tree_paths"), bool(ctx.get("tree_complete", False))
+            spec,
+            ctx.get("tree_paths"),
+            bool(ctx.get("tree_complete", False)),
+            review_context=ctx.get("review_context", ""),
         ),
         max_rounds=spec.max_rounds,
         log_prefix=f"[{spec.key}] ",
