@@ -8,7 +8,7 @@ from verify.troubleshooting_quality import validate_troubleshooting_consistency
 
 
 SOURCE_QUOTE = (
-    "In Python 3.11, reading data['username'] raises KeyError when the key is missing."
+    "In Python 3.11, reading data['username'] in a dictionary raises KeyError when the key is missing."
 )
 FENCE = chr(96) * 3
 
