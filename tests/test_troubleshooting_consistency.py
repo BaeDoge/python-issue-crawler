@@ -131,7 +131,7 @@ class TroubleshootingConsistencyTests(unittest.TestCase):
 
     def test_version_can_be_evidenced_elsewhere_in_source_context(self):
         raw, sections, context = make_draft(
-            source_quote="reading data['username'] raises KeyError when the key is missing."
+            source_quote="reading data['username'] in a dictionary raises KeyError when the key is missing."
         )
 
         self.assertEqual(
