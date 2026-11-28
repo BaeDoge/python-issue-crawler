@@ -226,13 +226,15 @@ def parse_algorithm_test_manifest(
             if not all(_is_json_value(value) for value in values):
                 issues.append(f"{case_prefix}: args/kwargs/expected는 유효한 JSON 값이어야 합니다.")
                 continue
-            valid_cases.append({
+            normalized_case = {
                 "args": args,
                 "kwargs": kwargs,
                 "expected": case["expected"],
                 "comparison": comparison,
-                "expected_args": case.get("expected_args"),
-            })
+            }
+            if "expected_args" in case:
+                normalized_case["expected_args"] = case["expected_args"]
+            valid_cases.append(normalized_case)
         if len(valid_cases) == len(cases):
             specs.append(AlgorithmSolutionSpec(section, block_index, entrypoint, tuple(valid_cases)))
 
