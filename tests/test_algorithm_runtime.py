@@ -174,6 +174,41 @@ class AlgorithmRuntimeTests(unittest.TestCase):
 
         self.assertEqual(validate_and_run_algorithm_tests(raw, sections), [])
 
+    def test_runs_alternative_solution_when_python_code_is_present(self):
+        primary = "def solve(value):\\n    return value * 2"
+        alternative = "def solve_alt(value):\\n    return sum([value, value])"
+        cases_primary = [
+            {"args": [2], "expected": 4, "source_example": True},
+            {"args": [0], "expected": 0},
+            {"args": [-3], "expected": -6},
+        ]
+        cases_alternative = [
+            {"args": [2], "expected": 4, "source_example": True},
+            {"args": [0], "expected": 0},
+            {"args": [-3], "expected": -6},
+        ]
+        manifest = {
+            "solutions": [
+                {"section": "풀이", "block_index": 0, "entrypoint": "solve", "cases": cases_primary},
+                {"section": "다른 풀이 방법", "block_index": 0, "entrypoint": "solve_alt", "cases": cases_alternative},
+            ]
+        }
+        raw = (
+            "<!-- ALGORITHM_TESTS\\n"
+            + json.dumps(manifest, ensure_ascii=False)
+            + "\\n-->\\n"
+            + "제목: [코딩테스트] 테스트\\n"
+            + "요약: 실행 테스트\\n"
+            + "## 풀이\\n~~~python\\n" + primary + "\\n~~~\\n"
+            + "## 다른 풀이 방법\\n~~~python\\n" + alternative + "\\n~~~\\n"
+        )
+        sections = {
+            "풀이": "~~~python\\n" + primary + "\\n~~~",
+            "다른 풀이 방법": "~~~python\\n" + alternative + "\\n~~~",
+        }
+
+        self.assertEqual(validate_and_run_algorithm_tests(raw, sections), [])
+
     def test_fails_when_output_does_not_match_expected_value(self):
         source = "def solve(value):\n    return value + 1"
         cases = [
