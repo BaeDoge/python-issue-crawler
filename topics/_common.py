@@ -27,6 +27,7 @@ from crew_builder import build_scout_agent, build_writer_agent, build_reviewer_a
 from verify.quality import refine_loop, detect_foreign_language_mixing, build_revision_prompt, has_noop_loop_code
 from verify.code_blocks import iter_fenced_code_blocks
 from verify.code_quality import validate_python_code_blocks, validate_code_languages
+from verify.algorithm_runtime import validate_and_run_algorithm_tests
 from verify.repository_paths import find_unverified_repository_paths as _find_unverified_repository_paths
 from topics.note_format import parse_note_text
 from output.note import render_note, render_note_en
@@ -291,6 +292,10 @@ def _deterministic_check(
                 if phrase in content:
                     issues.append(f"'{name}' 섹션에 '{phrase}' 표현이 있음 — 독자가 실제로 따라 할 수 있는 "
                                   "해결 조치를 써야 함(기다리라거나 불가능하다는 내용은 불합격)")
+
+        if spec.key == "algorithm":
+            runtime_issues = validate_and_run_algorithm_tests(draft_raw, sections)
+            issues.extend(runtime_issues)
 
         all_text = title + " " + (data.get("summary", "") or "") + " " + json.dumps(sections, ensure_ascii=False)
         body_chars = sum(len((content or "").strip()) for _, content in section_items)

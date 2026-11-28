@@ -73,7 +73,9 @@ SPEC = TopicSpec(
         "요약됐는가, 각 Python 코드 블록이 문법적으로 유효하고 필요한 typing/표준 라이브러리 import를 "
         "포함하는가, pass·...·NotImplementedError만 있는 미완성 함수나 실행 불가능한 최상위 return이 "
         "남아 있지 않은가, 코드가 문제의 입출력 조건과 경계 사례에 맞는가, 시간·공간 복잡도가 실제 "
-        "구현을 기준으로 설명됐는가, '다른 풀이 방법'이 실제로 다른 접근인가(같은 풀이를 변수명만 바꾼 것이 아닌가)"
+        "구현을 기준으로 설명됐는가, '다른 풀이 방법'이 실제로 다른 접근인가(같은 풀이를 변수명만 바꾼 것이 아닌가), "
+        "숨겨진 ALGORITHM_TESTS 명세의 공식 예시 입력·출력과 경계 테스트가 문제 원문에 맞는가, "
+        "각 풀이 코드의 entrypoint와 테스트 코드 블록이 정확히 연결됐는가"
     ),
     build_context=_build_context,
     category_prefix_en="[Coding Test]",
@@ -87,6 +89,14 @@ SPEC = TopicSpec(
         "- 풀이와 대안 코드는 Python으로 작성할 것. Java, C++, JavaScript 등 다른 언어의 코드를 Python 풀이처럼 섞지 말 것. 입력/출력 예시만 필요한 경우에는 text 펜스를 사용할 것\n"
         "- TreeNode/ListNode 등 LeetCode 실행기가 제공하는 타입은 플랫폼 제공 타입임을 설명하고, 로컬 실행 예시가 필요하면 최소 정의를 함께 제공할 것\n"
         "- pass, ..., NotImplementedError만 있는 함수 뼈대나 최상위 return 문을 풀이/대안 코드로 제시하지 말 것\n"
+        "- 각 풀이 코드는 실행 테스트 명세를 함께 작성할 것. 테스트 명세는 첫 섹션 헤더(## 문제) 앞에 HTML 주석으로 넣어 MDX 본문에는 노출되지 않게 할 것\n"
+        "- 숨겨진 테스트 명세 형식은 다음 JSON 구조를 정확히 지킬 것: <!-- ALGORITHM_TESTS { \"solutions\": [ { \"section\": \"풀이\", \"block_index\": 0, \"entrypoint\": \"Solution.twoSum\", \"cases\": [ { \"args\": [[2,7,11,15],9], \"expected\": [0,1], \"comparison\": \"unordered_list\", \"source_example\": true }, { \"args\": [[3,2,4],6], \"expected\": [1,2], \"comparison\": \"unordered_list\" }, { \"args\": [[3,3],6], \"expected\": [0,1], \"comparison\": \"unordered_list\" } ] } ] } -->\n"
+        "- solutions 배열의 각 항목은 section(풀이/다른 풀이 방법), block_index(해당 섹션의 Python 코드 블록 기준 0부터), entrypoint(함수명 또는 Solution.method명), cases를 포함할 것. 다른 풀이 방법에 Python 코드가 있으면 그 풀이도 별도 테스트할 것\n"
+        "- 각 풀이별 cases는 3~8개를 제공하고, 원문 지문의 공식 예시를 입력·기대 출력까지 그대로 옮긴 테스트 하나에 source_example: true를 붙일 것. 나머지는 빈 입력, 최소 크기, 중복, 음수, 경계값 등 해당 문제에 맞는 테스트로 구성할 것\n"
+        "- 테스트 args는 함수에 전달할 위치 인자 배열이며 kwargs는 선택적 객체다. 출력 순서가 무관한 배열만 comparison: \"unordered_list\"를 사용하고 그 외에는 exact 비교를 사용할 것. 입력을 제자리 수정하는 문제는 expected_args도 지정할 것\n"
+        "- TreeNode 입력은 { \"__type__\": \"TreeNode\", \"level_order\": [1,2,3] }, ListNode 입력은 { \"__type__\": \"ListNode\", \"values\": [1,2,3] }로 표현할 것\n"
+        "- entrypoint 예: 클래스 풀이 \"Solution.twoSum\", 독립 함수 풀이 \"two_sum\". 각 코드 블록은 필요한 import를 포함하고 독립 실행 가능해야 함\n"
+        "- 테스트 기대값을 임의로 만들지 말고 공식 예시는 원문과 대조할 것. 추가 경계 테스트의 기대값도 알고리즘을 직접 추적해 검증할 것\n"
         "- 다른 풀이 방법: 접근이 실제로 다른 풀이만(예: 완전탐색 vs 해시맵), 복잡도 비교 포함"
     ),
 )

@@ -227,3 +227,16 @@ For a Next.js content tree with category subdirectories, configure the Baejoon t
 ```
 
 The publisher writes Korean articles to `content/<category>/<slug>.mdx` and English articles to `content/en/<category>/<slug>.mdx`. Keep the Korean and English slug identical so the website can switch directly between language editions. English publication remains guarded: when the paired English MDX is missing, the target is not published.
+
+
+## Algorithm runtime verification
+
+Algorithm notes must include a machine-readable test manifest in an HTML comment named ALGORITHM_TESTS, placed before the first section heading. The note parser ignores this comment, so it is not rendered in Korean or English MDX.
+
+- Each solution entry identifies the section (풀이 or 다른 풀이 방법), the zero-based index of its Python code block, and the function or Solution.method entrypoint.
+- Each tested solution includes 3–8 cases, including at least one official LeetCode example marked with source_example: true, plus problem-specific edge cases.
+- Use comparison: "unordered_list" only when the problem allows any output order. For in-place algorithms, include expected_args to validate the mutated inputs.
+- Tree inputs use {"__type__": "TreeNode", "level_order": [1, 2, 3]} and linked-list inputs use {"__type__": "ListNode", "values": [1, 2, 3]}.
+- A Python alternative is also executed when its section contains a Python block and must have its own test entry.
+
+The runner executes each selected code block in a separate Python child process with isolated interpreter flags, a minimal environment, an import allowlist, restricted builtins, AST policy checks, a timeout, and POSIX resource limits where available. This is defense-in-depth for generated examples, not a complete OS sandbox for hostile code. Do not expand the import allowlist without reviewing the exposed module surface and regression tests.
