@@ -37,6 +37,7 @@ jobs:
         run: |
           uv run python tests/test_code_blocks.py
           uv run python tests/test_code_quality.py
+          uv run python tests/test_algorithm_runtime.py
           uv run python tests/test_algorithm_reviewer_evidence.py
           uv run python tests/test_flexible_english_publish.py
           uv run python tests/test_troubleshooting_safety_guidance.py
