@@ -21,7 +21,7 @@ _INLINE_COMMENT = re.compile(r"\s+(?:#|//|--)\s.*$")
 
 _VERSION_ANCHOR_RE = re.compile(
     r"\b(?:python|pandas|numpy|django|flask|fastapi|pytorch|torch|node(?:\.js)?|"
-    r"postgresql|mysql|cuda|ubuntu|windows|typescript|react|next\.js)\s+v?\d+(?:\.\d+){0,3}\b",
+    r"postgresql|mysql|cuda|ubuntu|windows|typescript|react|next\.js)\s+v?\d+(?:\.\d+){0,3}(?![\w.])",
     re.IGNORECASE,
 )
 _EXCEPTION_ANCHOR_RE = re.compile(r"\b[A-Z][A-Za-z0-9]*(?:Error|Exception|Warning)\b")
