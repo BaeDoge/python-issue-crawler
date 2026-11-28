@@ -240,3 +240,18 @@ Algorithm notes must include a machine-readable test manifest in an HTML comment
 - A Python alternative is also executed when its section contains a Python block and must have its own test entry.
 
 The runner executes each selected code block in a separate Python child process with isolated interpreter flags, a minimal environment, an import allowlist, restricted builtins, AST policy checks, a timeout, and POSIX resource limits where available. This is defense-in-depth for generated examples, not a complete OS sandbox for hostile code. Do not expand the import allowlist without reviewing the exposed module surface and regression tests.
+
+
+## Troubleshooting consistency checks
+
+Troubleshooting notes include one hidden TROUBLESHOOTING_CHECKS JSON comment before the first section heading. It is consumed by the quality gate and is not copied into the published MDX.
+
+The manifest ties together:
+- source_quote: an exact, whitespace-normalized excerpt of at least 24 characters from the supplied question, accepted answer, or official documentation.
+- error_signature: the error class/message present in both the source evidence and the Symptom section.
+- reproduction_block_index and fix_block_index: zero-based indexes of the fenced blocks in the Symptom and Solution sections.
+- shared_terms: 1–3 original identifiers/command tokens that must appear in the source quote, reproduction block, and fix block.
+- cause_terms and fix_terms: technical anchors that must appear in both the supplied source context and the Cause/Solution sections.
+- environment: optional package/runtime version claims; each must be supported by the fetched source context and stated in the article.
+
+The English translation validator also checks that inline code, version strings, exception names, and command-line flags are preserved. This is a traceability guard, not a semantic proof that every possible environment is fixed; the reviewer still checks whether the repair actually addresses the reported cause.
