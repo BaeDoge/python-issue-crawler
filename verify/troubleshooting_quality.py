@@ -195,8 +195,8 @@ def validate_troubleshooting_consistency(
                 issues.append("TROUBLESHOOTING_CHECKS: environment의 패키지명과 버전은 문자열이어야 합니다.")
                 continue
             claim = f"{package} {version}"
-            if not _contains_term(source_quote if isinstance(source_quote, str) else "", claim):
-                issues.append(f"TROUBLESHOOTING_CHECKS: 버전 주장 '{claim}'이 원문 인용에 없습니다.")
+            if not _contains_term(review_context, claim):
+                issues.append(f"TROUBLESHOOTING_CHECKS: 버전 주장 '{claim}'이 제공된 원문/공식 문서 근거에 없습니다.")
             if not _contains_term(symptom + "\n" + cause + "\n" + solution, claim):
                 issues.append(f"본문에서 원문 환경 버전 '{claim}'을 확인할 수 없습니다.")
 
